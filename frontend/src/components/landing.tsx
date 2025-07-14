@@ -65,7 +65,7 @@ export default function EtailLanding() {
         setTranscript('');
         setError('');
         try {
-            const response = await fetch('http://cliplink_backend:8000/transcript', {
+            const response = await fetch('http://localhost:8000/transcript', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ youtube_url: inputValue }),

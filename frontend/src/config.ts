@@ -1,7 +1,7 @@
 // Frontend configuration
 export const config = {
     // API Configuration
-    API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://cliplink_backend:8000',
+    API_BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
 
     // Clerk Configuration
     CLERK_PUBLISHABLE_KEY: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,

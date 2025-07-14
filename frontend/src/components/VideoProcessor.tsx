@@ -218,7 +218,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                 duration: duration,
                                 s3_url: path,
                                 thumbnail_url: thumbnail?.thumbnail_path ?
-                                    `http://cliplink_backend:8000/${thumbnail.thumbnail_path}` : null,
+                                    `http://localhost:8000/${thumbnail.thumbnail_path}` : null,
                                 clip_id: thumbnail?.clip_id
                             };
                         });

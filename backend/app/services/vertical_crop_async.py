@@ -717,7 +717,7 @@ class AsyncVerticalCropService:
                 try:
                     fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
                     temp_out = cv2.VideoWriter(str(temp_video_path), fourcc, fps, target_size)
-                    
+            
                     # Test if the writer was created successfully
                     if temp_out.isOpened():
                         out = temp_out

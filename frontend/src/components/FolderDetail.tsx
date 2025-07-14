@@ -42,7 +42,7 @@ const FolderDetail = () => {
         try {
             const token = await getToken({ template: "cliplink" });
 
-            const response = await fetch(`http://cliplink_backend:8000/api/videos/${folderId}`, {
+            const response = await fetch(`http://localhost:8000/api/videos/${folderId}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
