@@ -1,0 +1,116 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: cliplink_db
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-cliplink}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cliplink-network
+
+  # Redis (for caching and task queues)
+  redis:
+    image: redis:7-alpine
+    container_name: cliplink_redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cliplink-network
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cliplink_backend
+    env_file:
+      - .env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+    volumes:
+      # Persist logs and temp files
+      - app_logs:/app/logs
+      - app_downloads:/app/downloads
+      - app_temp_uploads:/app/temp_uploads
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+    networks:
+      - cliplink-network
+
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://cliplink_backend:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+      args:
+        VITE_API_BASE_URL: ${API_BASE_URL:-http://cliplink_backend:8000}
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+    container_name: cliplink_frontend
+    env_file:
+      - .env
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+    networks:
+      - cliplink-network
+
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  app_logs:
+    driver: local
+  app_downloads:
+    driver: local
+  app_temp_uploads:
+    driver: local
+
+networks:
+  cliplink-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

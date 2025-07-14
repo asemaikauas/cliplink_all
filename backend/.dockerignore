@@ -1,0 +1,50 @@
+# Exclude downloaded videos and temporary files
+downloads/
+temp_uploads/
+temp_vertical/
+clips/
+thumbnails/
+
+# Exclude virtual environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Exclude IDE and system files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Exclude logs and database files
+*.log
+*.db
+*.sqlite
+logs/
+
+# Exclude git
+.git/
+.gitignore
+
+# Exclude test files
+test/
+tests/
+*.test
+pytest.ini
+
+# Exclude documentation
+*.md
+README*
+
+# Exclude migration files (they should be run separately)
+migrations/
+
+# Exclude temporary and cache files
+.cache/
+.pytest_cache/
+*.tmp
+*.temp 

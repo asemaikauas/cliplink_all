@@ -1,0 +1,317 @@
+# Cliplink Project .gitignore
+
+# ====================
+# Environment Variables
+# ====================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+secrets.json
+config.json
+
+# ====================
+# Python / Backend
+# ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+backend/venv/
+backend/venv_py312/
+
+# Python specific for this project
+*.pyc
+*.pyo
+*.pyd
+
+# Backend specific
+backend/__pycache__/
+backend/clips/
+backend/downloads/
+backend/thumbnails/
+backend/video_segments/
+backend/temp/
+backend/migrations/__pycache__/
+backend/app/__pycache__/
+backend/test/__pycache__/
+backend/tests/__pycache__/
+
+# ====================
+# Node.js / Frontend
+# ====================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm
+.yarn-integrity
+
+# Frontend Build
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.next/
+frontend/out/
+frontend/*.local
+
+# TypeScript
+*.tsbuildinfo
+frontend/*.tsbuildinfo
+
+# ====================
+# IDE and Editors
+# ====================
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+!.vscode/extensions.json
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ====================
+# Operating Systems
+# ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+
+# ====================
+# Media Files & Downloads
+# ====================
+# Video files (временные и загруженные)
+/downloads/
+/backend/downloads/
+/backend/clips/
+/backend/video_segments/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+
+# Audio files
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.ogg
+*.wma
+
+# MoviePy temporary files
+*TEMP_MPY_wvf_snd.*
+
+# ====================
+# Large Files (Git LFS or exclude)
+# ====================
+# Machine Learning Models
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.model
+*.onnx
+*.pb
+*.pth
+*.pt
+*.caffemodel
+*.prototxt
+*.weights
+*.bin
+
+# Archive Files
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# Database Files
+*.sql.gz
+*.dump
+*.dmp
+*.bak
+*.backup
+
+# Large Document Files
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+
+# Large Image Files
+*.psd
+*.raw
+*.tiff
+*.tif
+
+# Binary Executables
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.msi
+*.app
+
+# Large Asset Files
+*.iso
+*.img
+*.bin
+*.dat
+
+# Cache and Build Artifacts
+*.cache
+pip-wheel-metadata/
+.coverage.*
+*.cover
+.hypothesis/
+.pytest_cache/
+__pycache__/
+
+# ====================
+# Logs and Temporary Files
+# ====================
+logs
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ====================
+# Testing and Coverage
+# ====================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+.nyc_output
+coverage/
+*.lcov
+test_results/
+test-output/
+backend/.pytest_cache/
+frontend/.nyc_output
+
+# ====================
+# Database
+# ====================
+*.db
+*.sqlite
+*.sqlite3
+
+# ====================
+# Docker
+# ====================
+Dockerfile.prod
+docker-compose.prod.yml
+
+# ====================
+# API Keys and Secrets
+# ====================
+*.pem
+*.key
+*.crt
+api_keys.py
+secrets.py
+
+# ====================
+# Backup Files
+# ====================
+*.bak
+*.backup
+deployment-backup-*/
+
+# ====================
+# Application Specific
+# ====================
+# YouTube API credentials
+youtube_credentials.json
+client_secret.json
+
+# Gemini API keys
+gemini_api_key.txt
+
+# Transcript cache
+transcript_cache/
+
+# User uploads
+uploads/
+temp_uploads/
+
+# Additional temporary directories
+temp/
+tmp/
+.temp/
+.tmp/ 

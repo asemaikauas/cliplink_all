@@ -1,0 +1,126 @@
+# Temporary files and uploads
+temp_uploads/
+temp_vertical/
+downloads/
+clips/
+thumbnails/
+backend/temp_uploads/
+backend/temp_vertical/
+backend/downloads/
+backend/clips/
+backend/thumbnails/
+backend/tests/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+backend/venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Node modules (if any)
+node_modules/
+frontend/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.production
+backend/.env
+
+# Logs
+*.log
+logs/
+backend/logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+.coverage
+.pytest_cache/
+.tox/
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+
+# Documentation
+*.md
+README*
+DEPLOYMENT*
+
+# Large model files
+backend/models/
+models/
+
+# Backup files
+*.bak
+*.backup
+
+# Mac specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary video processing files
+*.tmp
+*.temp
+*.mov
+*.mp4
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+*.3gp
+*.ts
+*.m3u8
+*.wav
+*.mp3
+*.aac
+*.flac
+*.ogg
+*.wma
+*.m4a 

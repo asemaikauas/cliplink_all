@@ -1,0 +1,165 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cliplink_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Run backend tests
+      run: |
+        cd backend
+        python -m pytest tests/ -v
+      env:
+        DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/cliplink_test
+        CLERK_DOMAIN: test.clerk.accounts.dev
+        JWKS_URL: https://test.clerk.accounts.dev/.well-known/jwks.json
+        GROQ_API_KEY: test-key
+        YOUTUBE_TRANSCRIPT_API: test-key
+    
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm run lint
+        npm run build
+    
+    - name: Run frontend type check
+      run: |
+        cd frontend
+        npm run type-check || npx tsc --noEmit
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service: [backend, frontend]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./${{ matrix.service }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    environment:
+      name: production
+      url: https://your-domain.com
+    
+    steps:
+    - name: Deploy to production
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.PRIVATE_KEY }}
+        script: |
+          cd /opt/cliplink
+          
+          # Pull latest images
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker-compose pull
+          
+          # Update environment variables
+          cp docker.env.example .env
+          sed -i 's/your-secure-database-password/${{ secrets.DB_PASSWORD }}/g' .env
+          sed -i 's/your-domain.clerk.accounts.dev/${{ secrets.CLERK_DOMAIN }}/g' .env
+          sed -i 's/pk_live_your-publishable-key-here/${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}/g' .env
+          sed -i 's/https:\/\/api.your-domain.com/${{ secrets.VITE_API_BASE_URL }}/g' .env
+          sed -i 's/https:\/\/your-domain.com/${{ secrets.ALLOWED_ORIGINS }}/g' .env
+          sed -i 's/your-groq-api-key-here/${{ secrets.GROQ_API_KEY }}/g' .env
+          sed -i 's/your-youtube-api-key-here/${{ secrets.YOUTUBE_TRANSCRIPT_API }}/g' .env
+          
+          # Deploy with zero downtime
+          docker-compose up -d --remove-orphans
+          
+          # Clean up old images
+          docker system prune -f
+          
+          # Health check
+          sleep 30
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost/health || exit 1
+          
+          echo "Deployment completed successfully" 
