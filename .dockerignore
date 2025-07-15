@@ -91,8 +91,6 @@ README*
 DEPLOYMENT*
 
 # Large model files
-backend/models/
-models/
 
 # Backup files
 *.bak

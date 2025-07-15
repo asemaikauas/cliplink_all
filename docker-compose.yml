@@ -2,6 +2,10 @@ services:
   db:
     image: postgres:15-alpine
     container_name: cliplink_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cliplink_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ad7Vgy26}
+      POSTGRES_DB: ${POSTGRES_DB:-cliplink}
     env_file:
       - .env
     volumes:
@@ -10,7 +14,7 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-cliplink}" ]
+      test: [ "CMD-SHELL", "pg_isready -U cliplink_user -d cliplink" ]
       interval: 30s
       timeout: 10s
       retries: 5

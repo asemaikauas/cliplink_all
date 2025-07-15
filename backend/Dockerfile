@@ -39,8 +39,14 @@ COPY schema.sql ./
 COPY migrations/ ./migrations/
 
 # Copy necessary model files specifically
-COPY models/deploy.prototxt ./models/
-COPY models/res10_300x300_ssd_iter_140000_fp16.caffemodel ./models/
+RUN mkdir -p /app/models
+
+# скачиваем модельные файлы из репозитория OpenCV
+RUN curl -L https://raw.githubusercontent.com/opencv/opencv_3rdparty/master/dnn_samples_face_detector_20170830/deploy.prototxt \
+    -o /app/models/deploy.prototxt \
+    && curl -L https://github.com/opencv/opencv_3rdparty/raw/master/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000_fp16.caffemodel \
+    -o /app/models/res10_300x300_ssd_iter_140000_fp16.caffemodel
+
 
 # Create necessary directories
 RUN mkdir -p logs downloads temp_uploads clips thumbnails temp_vertical
