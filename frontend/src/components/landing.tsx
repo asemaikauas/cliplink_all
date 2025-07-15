@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { apiUrl } from '../config';
 
 const features = [
     {
@@ -65,7 +66,7 @@ export default function EtailLanding() {
         setTranscript('');
         setError('');
         try {
-            const response = await fetch('http://localhost:8000/transcript', {
+            const response = await fetch(apiUrl('/transcript'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ youtube_url: inputValue }),

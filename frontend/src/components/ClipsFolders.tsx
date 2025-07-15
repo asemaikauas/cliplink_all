@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
+import { apiUrl } from '../config';
 
 interface VideoFolder {
     id: string;
@@ -25,7 +26,7 @@ const ClipsFolders = () => {
         try {
             const token = await getToken({ template: "cliplink" });
 
-            const response = await fetch('http://localhost:8000/api/videos', {
+            const response = await fetch(apiUrl('/videos'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'

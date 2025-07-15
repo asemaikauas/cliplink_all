@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { config } from '../config';
 
 interface Clip {
     id: string;
@@ -89,7 +90,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
     const handleDownload = () => {
         try {
             const link = document.createElement('a');
-            link.href = `http://localhost:8000/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`;
+            link.href = `${config.API_BASE_URL}/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`;
             link.download = `${clip.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
             document.body.appendChild(link);
             link.click();
@@ -123,7 +124,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
                     <div className="aspect-[9/16]">
                         <video
                             ref={videoRef}
-                            src={`http://localhost:8000/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`}
+                            src={`${config.API_BASE_URL}/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`}
                             className="w-full h-full object-contain"
                             preload="metadata"
                             onLoadedMetadata={handleLoadedMetadata}

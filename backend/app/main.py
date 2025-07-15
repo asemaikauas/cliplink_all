@@ -79,15 +79,26 @@ clips_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/clips", StaticFiles(directory="downloads/clips"), name="clips")
 
 # Include the video processing routers
-app.include_router(transcript.router, prefix="/transcript", tags=["Transcript"])
-app.include_router(workflow.router, prefix="/workflow", tags=["Workflow"])
-app.include_router(subtitles.router, prefix="/subtitles", tags=["Subtitles"])
+app.include_router(transcript.router, prefix="/api/transcript", tags=["Transcript"])
+app.include_router(workflow.router, prefix="/api/workflow", tags=["Workflow"])
+app.include_router(subtitles.router, prefix="/api/subtitles", tags=["Subtitles"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(clips.router, prefix="/api", tags=["Clips"])
+
+# Debug endpoint to test API routing
+@app.get("/api/debug")
+async def debug_endpoint():
+    return {"message": "API is working", "timestamp": datetime.now()}
+
+# Health check endpoint (keep at root level)
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now()}
 
 # Serve React frontend (must be last to catch all routes)
 frontend_dist_path = os.getenv("FRONTEND_DIST_PATH", "/app/frontend/dist")
 if os.path.exists(frontend_dist_path):
+    # Mount static files but make sure API routes take precedence
     app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="frontend")
 else:
     # Development fallback

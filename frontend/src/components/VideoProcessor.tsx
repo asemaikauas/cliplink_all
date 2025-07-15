@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import VideoPlayerModal from './VideoPlayerModal';
-import { apiUrl, clipUrl } from '../config';
+import { apiUrl, clipUrl, config } from '../config';
 
 interface VideoProcessorProps {
     initialUrl?: string;
@@ -218,7 +218,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                 duration: duration,
                                 s3_url: path,
                                 thumbnail_url: thumbnail?.thumbnail_path ?
-                                    `http://localhost:8000/${thumbnail.thumbnail_path}` : null,
+                                    `${config.API_BASE_URL}/${thumbnail.thumbnail_path}` : null,
                                 clip_id: thumbnail?.clip_id
                             };
                         });

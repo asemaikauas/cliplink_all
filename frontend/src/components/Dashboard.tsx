@@ -47,7 +47,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('🔑 Got token, making API call to backend...');
 
-            const response = await fetch(apiUrl('/api/users/me'), {
+            const response = await fetch(apiUrl('/users/me'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -74,7 +74,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('📊 Fetching user stats...');
 
-            const response = await fetch(apiUrl('/api/users/me/stats'), {
+            const response = await fetch(apiUrl('/users/me/stats'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -101,7 +101,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('🏠 Testing dashboard endpoint...');
 
-            const response = await fetch(apiUrl('/api/users/dashboard'), {
+            const response = await fetch(apiUrl('/users/dashboard'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
