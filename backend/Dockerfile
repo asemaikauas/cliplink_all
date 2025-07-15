@@ -33,8 +33,14 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application code
-COPY . ./
+# Copy application code (excluding files listed in .dockerignore)
+COPY app/ ./app/
+COPY schema.sql ./
+COPY migrations/ ./migrations/
+
+# Copy necessary model files specifically
+COPY models/deploy.prototxt ./models/
+COPY models/res10_300x300_ssd_iter_140000_fp16.caffemodel ./models/
 
 # Create necessary directories
 RUN mkdir -p logs downloads temp_uploads clips thumbnails temp_vertical

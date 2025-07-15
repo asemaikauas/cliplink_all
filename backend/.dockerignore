@@ -1,50 +1,77 @@
-# Exclude downloaded videos and temporary files
-downloads/
-temp_uploads/
-temp_vertical/
-clips/
-thumbnails/
-
-# Exclude virtual environment
-venv/
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
+venv/
+env/
+ENV/
 
-# Exclude IDE and system files
-.vscode/
-.idea/
-.DS_Store
-*.swp
-*.swo
-
-# Exclude logs and database files
+# Development files
+.env
+.env.local
+.env.*.local
 *.log
-*.db
-*.sqlite
 logs/
 
-# Exclude git
+# Video and media files
+clips/
+downloads/
+thumbnails/
+temp_uploads/
+temp_vertical/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+
+# Test files
+test/
+tests/
+*_test.py
+test_*.py
+pytest.ini
+
+# Documentation
+README*.md
+*.md
+
+# Git
 .git/
 .gitignore
 
-# Exclude test files
-test/
-tests/
-*.test
-pytest.ini
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Exclude documentation
-*.md
-README*
-
-# Exclude migration files (they should be run separately)
-migrations/
-
-# Exclude temporary and cache files
-.cache/
-.pytest_cache/
+# Temporary files
+temp_*
 *.tmp
-*.temp 
+*.temp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Migration scripts (keep schema.sql but exclude test scripts)
+run_migration_*.py
+sample_queries.sql
+
+# Large model files during development - but we need the specific ones
+# models/*.caffemodel  # Commented out - we need these specific files 
