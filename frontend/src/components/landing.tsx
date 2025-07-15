@@ -66,7 +66,7 @@ export default function EtailLanding() {
         setTranscript('');
         setError('');
         try {
-            const response = await fetch(apiUrl('/transcript'), {
+            const response = await fetch(apiUrl('/api/transcript'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ youtube_url: inputValue }),

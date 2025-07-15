@@ -100,6 +100,7 @@ frontend_dist_path = os.getenv("FRONTEND_DIST_PATH", "/app/frontend/dist")
 if os.path.exists(frontend_dist_path):
     # Mount static files but make sure API routes take precedence
     app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="frontend")
+    print(f"🚀 Frontend dist path exists: {frontend_dist_path}")
 else:
     # Development fallback
     @app.get("/")

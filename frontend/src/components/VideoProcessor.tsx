@@ -124,7 +124,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
         try {
             // Start the comprehensive video processing
-            const response = await fetch(apiUrl('/workflow/process-comprehensive-async'), {
+            const response = await fetch(apiUrl('/api/workflow/process-comprehensive-async'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -173,7 +173,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const pollTaskProgress = async (taskId: string) => {
         const pollInterval = setInterval(async () => {
             try {
-                const response = await fetch(apiUrl(`/workflow/status/${taskId}`), {
+                const response = await fetch(apiUrl(`/api/workflow/status/${taskId}`), {
                     headers: {
                         'Content-Type': 'application/json'
                     }

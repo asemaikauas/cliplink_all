@@ -2,7 +2,7 @@ import { useUser, useAuth } from '@clerk/clerk-react';
 import { useState, useEffect } from 'react';
 import VideoProcessor from './VideoProcessor';
 import { getPendingUrl, clearPendingUrl } from './landing';
-import { apiUrl } from '../config';
+import { apiUrl, config } from '../config';
 
 interface UserData {
     id: string;
@@ -47,7 +47,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('🔑 Got token, making API call to backend...');
 
-            const response = await fetch(apiUrl('/users/me'), {
+            const response = await fetch(apiUrl('/api/users/me'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -74,7 +74,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('📊 Fetching user stats...');
 
-            const response = await fetch(apiUrl('/users/me/stats'), {
+            const response = await fetch(apiUrl('/api/users/me/stats'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -101,7 +101,7 @@ const Dashboard = () => {
             const token = await getToken({ template: "cliplink" });
             console.log('🏠 Testing dashboard endpoint...');
 
-            const response = await fetch(apiUrl('/users/dashboard'), {
+            const response = await fetch(apiUrl('/api/users/dashboard'), {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -162,7 +162,7 @@ const Dashboard = () => {
                             <h3 className="text-lg font-semibold text-red-800 mb-2">Backend Connection Error</h3>
                             <p className="text-red-600">{error}</p>
                             <p className="text-sm text-red-500 mt-2">
-                                Make sure your backend is running on http://localhost:8000
+                                Make sure your backend API is accessible at {config.API_BASE_URL}
                             </p>
                             <button
                                 onClick={() => {
