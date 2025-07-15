@@ -42,9 +42,9 @@ COPY migrations/ ./migrations/
 RUN mkdir -p /app/models
 
 # скачиваем модельные файлы из репозитория OpenCV
-RUN curl -L https://raw.githubusercontent.com/opencv/opencv_3rdparty/master/dnn_samples_face_detector_20170830/deploy.prototxt \
+RUN curl -L --fail https://raw.githubusercontent.com/opencv/opencv/4.x/samples/dnn/face_detector/deploy.prototxt \
     -o /app/models/deploy.prototxt \
-    && curl -L https://github.com/opencv/opencv_3rdparty/raw/master/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000_fp16.caffemodel \
+    && curl -L --fail https://github.com/opencv/opencv_3rdparty/raw/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel \
     -o /app/models/res10_300x300_ssd_iter_140000_fp16.caffemodel
 
 
