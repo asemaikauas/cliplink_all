@@ -23,7 +23,7 @@ typing_extensions==4.14.0
 urllib3==2.4.0
 uvicorn==0.34.3
 webrtcvad==2.0.10
-yt-dlp==2025.6.9
+
 # Subtitle subsystem dependencies
 groq>=0.15.0
 pytest==8.3.4
@@ -47,7 +47,10 @@ cryptography==41.0.7
 
 # CORS and security
 
-# Azure Blb Storage
+# Azure Blob Storage
 azure-storage-blob==12.19.0
 azure-identity==1.15.0
 aiofiles==23.2.0
+
+# Apify API client for YouTube downloads
+apify-client==1.8.2
