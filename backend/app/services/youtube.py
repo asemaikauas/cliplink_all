@@ -275,8 +275,12 @@ class YouTubeService:
             
             print(f"📥 Starting download via Apify API...")
             
-            # Run the Actor and get results
-            results = self.client.actor("xtech/youtube-video-downloader").call_sync_get_dataset_items(run_input=run_input)
+            # Run the Actor and wait for it to finish
+            run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
+            
+            # Get results from the dataset
+            dataset = self.client.dataset(run["defaultDatasetId"])
+            results = dataset.list_items().items
             
             if not results or len(results) == 0:
                 raise DownloadError("No download results returned from Apify")
