@@ -130,13 +130,30 @@ async def get_current_user(
     last_name = payload.get("last_name", "")
     
     try:
-        # Try to find existing user
+        # Try to find existing user by clerk_id
         query = select(User).where(User.clerk_id == clerk_id)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
-        
+
         if not user:
-            # Create new user if not found
+            # If not found by clerk_id, try to find by email
+            if email:
+                email_query = select(User).where(User.email == email)
+                email_result = await db.execute(email_query)
+                user_by_email = email_result.scalar_one_or_none()
+                if user_by_email:
+                    # Update clerk_id if needed
+                    if not user_by_email.clerk_id or user_by_email.clerk_id != clerk_id:
+                        user_by_email.clerk_id = clerk_id
+                        if first_name and user_by_email.first_name != first_name:
+                            user_by_email.first_name = first_name
+                        if last_name and user_by_email.last_name != last_name:
+                            user_by_email.last_name = last_name
+                        await db.commit()
+                        await db.refresh(user_by_email)
+                        logger.info(f"Updated existing user with new clerk_id: {user_by_email.email} (clerk_id: {clerk_id})")
+                    return user_by_email
+            # Create new user if not found by clerk_id or email
             user = User(
                 clerk_id=clerk_id,
                 email=email or f"{clerk_id}@clerk.local",  # Fallback email
@@ -151,28 +168,22 @@ async def get_current_user(
             # Check if user data needs updating
             updated = False
             updates = {}
-            
             if email and user.email != email:
                 updates["email"] = email
                 updated = True
-            
             if first_name and user.first_name != first_name:
                 updates["first_name"] = first_name
                 updated = True
-                
             if last_name and user.last_name != last_name:
                 updates["last_name"] = last_name
                 updated = True
-            
             if updated:
                 # Update user data
                 for field, value in updates.items():
                     setattr(user, field, value)
-                
                 await db.commit()
                 await db.refresh(user)
                 logger.info(f"Updated user data for {user.email}: {updates}")
-        
         return user
         
     except Exception as e:
