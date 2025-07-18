@@ -173,8 +173,8 @@ async def _process_single_viral_segment_parallel(
             return {"success": False, "error": "Missing start or end time", "clip_path": None}
         
         # --- 1. Cut Clip ---
-        from app.services.youtube import _sanitize_filename, create_clip_with_direct_ffmpeg
-        safe_title = _sanitize_filename(title)
+        from app.services.youtube import create_clip_with_direct_ffmpeg
+        safe_title = youtube_service._sanitize_filename(title)
         
         # Define clip paths
         base_dir = source_video_path.parent
