@@ -3,6 +3,7 @@ import os
 import subprocess
 import requests
 import tempfile
+import json
 from pathlib import Path
 from typing import List, Dict, Optional
 from moviepy import VideoFileClip
@@ -317,6 +318,110 @@ class YouTubeService:
         except Exception as e:
             raise DownloadError(f"Apify download failed: {str(e)}")
     
+    def _verify_video_codec(self, video_path: Path) -> Dict[str, str]:
+        """Verify the codec of a downloaded video file"""
+        try:
+            cmd = [
+                'ffprobe', '-v', 'quiet', '-show_streams', '-select_streams', 'v:0',
+                '-print_format', 'json', str(video_path)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                streams = data.get('streams', [])
+                if streams:
+                    codec_name = streams[0].get('codec_name', 'unknown').lower()
+                    return {
+                        'codec': codec_name,
+                        'width': streams[0].get('width', 0),
+                        'height': streams[0].get('height', 0)
+                    }
+            
+            return {'codec': 'unknown'}
+            
+        except Exception as e:
+            print(f"⚠️ Could not verify codec: {e}")
+            return {'codec': 'unknown'}
+    
+    def _try_alternative_qualities_for_h264(self, url: str, video_id: str, current_quality: str, av1_file: Path) -> Optional[Path]:
+        """Try alternative quality levels to find H.264 instead of AV1"""
+        
+        # Define quality preference order (prioritize qualities most likely to be H.264)
+        # Note: H.264 supports ALL qualities, but YouTube's AV1 usage varies by resolution
+        if current_quality == "best" or current_quality == "1080p":
+            alternative_qualities = ["720p", "1440p", "2160p"]  # Try 720p first (90% H.264), then higher
+        elif current_quality == "720p":
+            alternative_qualities = ["1080p", "1440p", "2160p"]  # 720p was AV1, try others
+        elif current_quality in ["1440p", "2160p", "4k"]:
+            alternative_qualities = ["1080p", "720p", "2160p"]  # Try common qualities first
+        else:
+            alternative_qualities = ["1080p", "720p", "1440p"]  # Cover all main qualities
+        
+        print(f"🔍 Trying alternative qualities for H.264: {alternative_qualities}")
+        
+        for alt_quality in alternative_qualities:
+            try:
+                print(f"   📥 Attempting {alt_quality}...")
+                
+                # Check if this quality file already exists
+                existing_alt = self._find_downloaded_file(video_id, alt_quality)
+                if existing_alt and existing_alt.exists():
+                    print(f"   ✅ Found existing {alt_quality} file")
+                    codec_info = self._verify_video_codec(existing_alt)
+                    if codec_info.get('codec') in ['h264', 'avc1']:
+                        print(f"   🎯 Existing {alt_quality} file is H.264 - using it!")
+                        # Remove the AV1 file
+                        if av1_file.exists():
+                            av1_file.unlink()
+                            print(f"   🗑️ Removed AV1 file: {av1_file.name}")
+                        return existing_alt
+                    continue
+                
+                # Try downloading this alternative quality
+                alt_apify_resolution = self.quality_map.get(alt_quality, alt_quality)
+                
+                run_input = {
+                    "urls": [url],
+                    "resolution": alt_apify_resolution,
+                    "max_concurrent": 1
+                }
+                
+                print(f"   📥 Downloading {alt_quality} via Apify...")
+                run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
+                dataset = self.client.dataset(run["defaultDatasetId"])
+                results = dataset.list_items().items
+                
+                if results and len(results) > 0:
+                    video_data = results[0]
+                    download_url = video_data.get('download_url')
+                    title = video_data.get('title', 'Unknown Video')
+                    
+                    if download_url:
+                        alt_file = self._download_file_from_url(download_url, video_id, title, alt_apify_resolution)
+                        
+                        # Check if this alternative is H.264
+                        codec_info = self._verify_video_codec(alt_file)
+                        if codec_info.get('codec') in ['h264', 'avc1']:
+                            print(f"   🎯 {alt_quality} is H.264 - using it instead!")
+                            # Remove the AV1 file
+                            if av1_file.exists():
+                                av1_file.unlink()
+                                print(f"   🗑️ Removed AV1 file: {av1_file.name}")
+                            return alt_file
+                        else:
+                            print(f"   ❌ {alt_quality} is also {codec_info.get('codec')} - removing")
+                            if alt_file.exists():
+                                alt_file.unlink()
+                
+            except Exception as e:
+                print(f"   ❌ Failed to try {alt_quality}: {e}")
+                continue
+        
+        print(f"   😞 No H.264 alternatives found - will use AV1 conversion fallback")
+        return None
+
     def _extract_video_id_from_url(self, url: str) -> Dict:
         """Extract video ID from YouTube URL"""
         import re
