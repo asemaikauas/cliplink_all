@@ -9,6 +9,10 @@ ENV PYTHONPATH=/app
 # Install system dependencies including build tools for Python packages
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    libdav1d5 \
+    libdav1d-dev \
+    libaom0 \
+    libaom-dev \
     libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
@@ -21,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser
