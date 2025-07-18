@@ -259,6 +259,7 @@ class YouTubeService:
             # Map quality to Apify format
             apify_resolution = self.quality_map.get(quality, "1080p")
             print(f"🎯 Requesting resolution: {apify_resolution}")
+            print(f"🛡️ H.264-First Strategy: Will check codec and try alternatives if AV1 detected")
             
             # Check if file already exists
             existing_file = self._find_downloaded_file(video_id)
@@ -295,7 +296,23 @@ class YouTubeService:
             print(f"✅ Got download URL from Apify: {title}")
             
             # Download the video file
-            return self._download_file_from_url(download_url, video_id, title, apify_resolution)
+            downloaded_file = self._download_file_from_url(download_url, video_id, title, apify_resolution)
+            
+            # 🎯 SMART H.264 VERIFICATION - Check codec and try alternatives if needed
+            codec_info = self._verify_video_codec(downloaded_file)
+            
+            if codec_info.get('codec') == 'av1':
+                print(f"⚠️ Downloaded video uses AV1 codec - trying alternative quality for H.264...")
+                
+                # Try different qualities to find H.264
+                h264_file = self._try_alternative_qualities_for_h264(url, video_id, quality, downloaded_file)
+                if h264_file:
+                    return h264_file
+                else:
+                    print(f"⚠️ Could not find H.264 alternative - keeping AV1 file (will be converted during processing)")
+            
+            print(f"✅ Download completed! Codec: {codec_info.get('codec', 'unknown')}")
+            return downloaded_file
             
         except Exception as e:
             raise DownloadError(f"Apify download failed: {str(e)}")

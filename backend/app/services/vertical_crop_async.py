@@ -20,6 +20,8 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from datetime import datetime
 import threading
+import json
+import tempfile
 
 # Smart Scene detection imports for intelligent crop reset
 try:
@@ -428,6 +430,147 @@ class AsyncVerticalCropService:
         """Async audio extraction"""
         return await self._run_cpu_bound_task(self._extract_audio_sync, video_path)
     
+    async def _detect_and_convert_av1_if_needed(self, video_path: Path) -> Path:
+        """
+        Detect AV1 codec issues and convert to H.264 if needed
+        
+        Returns:
+            Path to usable video file (original or converted)
+        """
+        try:
+            # First, try to detect the codec
+            cmd = [
+                'ffprobe', '-v', 'quiet', '-show_streams', '-select_streams', 'v:0',
+                '-print_format', 'json', str(video_path)
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0:
+                try:
+                    data = json.loads(stdout.decode())
+                    streams = data.get('streams', [])
+                    if streams:
+                        codec_name = streams[0].get('codec_name', '').lower()
+                        logger.info(f"🎬 Detected video codec: {codec_name}")
+                        
+                        # Check if it's AV1
+                        if codec_name == 'av1':
+                            logger.warning(f"⚠️ AV1 codec detected - this may cause decoding issues")
+                except json.JSONDecodeError:
+                    logger.warning(f"⚠️ Could not parse codec information")
+            
+            # Test if OpenCV can actually read frames from this video
+            logger.info(f"🔍 Testing OpenCV compatibility...")
+            cap = cv2.VideoCapture(str(video_path))
+            
+            if not cap.isOpened():
+                logger.error(f"❌ OpenCV cannot open video file")
+                cap.release()
+                return await self._convert_to_h264(video_path)
+            
+            # Try to read first few frames to check for decoding issues
+            frames_tested = 0
+            successful_reads = 0
+            
+            for _ in range(10):  # Test first 10 frames
+                ret, frame = cap.read()
+                frames_tested += 1
+                
+                if ret and frame is not None:
+                    successful_reads += 1
+                elif not ret:
+                    break  # End of video or critical error
+            
+            cap.release()
+            
+            # If we couldn't read any frames or success rate is too low, convert
+            success_rate = successful_reads / frames_tested if frames_tested > 0 else 0
+            
+            if successful_reads == 0:
+                logger.error(f"❌ OpenCV cannot read any frames from video - converting to H.264")
+                return await self._convert_to_h264(video_path)
+            elif success_rate < 0.5:
+                logger.warning(f"⚠️ Low frame read success rate ({success_rate:.1%}) - converting to H.264")
+                return await self._convert_to_h264(video_path)
+            else:
+                logger.info(f"✅ OpenCV can read video properly ({success_rate:.1%} success rate)")
+                return video_path
+                
+        except Exception as e:
+            logger.error(f"❌ Error testing video compatibility: {e}")
+            # If testing fails, try converting as fallback, but don't fail completely if FFmpeg is missing
+            try:
+                return await self._convert_to_h264(video_path)
+            except Exception as convert_error:
+                logger.warning(f"⚠️ Conversion also failed: {convert_error}")
+                logger.warning(f"⚠️ Proceeding with original video - results may be unreliable")
+                return video_path
+    
+    async def _convert_to_h264(self, input_path: Path) -> Path:
+        """
+        Convert video to H.264 for better OpenCV compatibility
+        
+        Returns:
+            Path to converted video file
+        """
+        try:
+            # Create temporary file for converted video
+            temp_dir = input_path.parent
+            temp_filename = f"h264_converted_{uuid.uuid4().hex[:8]}_{input_path.name}"
+            temp_path = temp_dir / temp_filename
+            
+            logger.info(f"🔄 Converting AV1/problematic video to H.264...")
+            logger.info(f"   📁 Input: {input_path.name}")
+            logger.info(f"   📁 Output: {temp_path.name}")
+            
+            # Use FFmpeg to convert to H.264 with good quality/speed balance
+            cmd = [
+                'ffmpeg', '-hide_banner', '-loglevel', 'error',
+                '-i', str(input_path),
+                '-c:v', 'libx264',
+                '-preset', 'fast',  # Good balance of speed/quality
+                '-crf', '23',       # Good quality
+                '-c:a', 'copy',     # Copy audio without re-encoding
+                '-movflags', '+faststart',
+                '-avoid_negative_ts', 'make_zero',
+                str(temp_path),
+                '-y'
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0 and temp_path.exists():
+                file_size = temp_path.stat().st_size / (1024 * 1024)  # MB
+                logger.info(f"✅ H.264 conversion successful ({file_size:.1f} MB)")
+                return temp_path
+            else:
+                error_msg = stderr.decode() if stderr else "Unknown FFmpeg error"
+                logger.error(f"❌ H.264 conversion failed: {error_msg}")
+                
+                # Clean up failed temp file
+                if temp_path.exists():
+                    temp_path.unlink()
+                    
+                # Return original file as last resort
+                return input_path
+                
+        except Exception as e:
+            logger.error(f"❌ Exception during H.264 conversion: {e}")
+            return input_path
+    
     def _process_audio_frames(self, audio_data: bytes, sample_rate: int = 16000, frame_duration_ms: int = 30):
         """Generator for audio frame processing"""
         if not audio_data:
@@ -501,13 +644,31 @@ class AsyncVerticalCropService:
                 "smoothing_strength": smoothing_strength
             }
         
+        # Initialize variables for cleanup tracking
+        actual_video_path = input_video_path
+        is_converted = False
+        
         try:
-            # Get video properties
-            self._update_task_status(task_id, "processing", 5, "Reading video properties...")
+            # 🔧 AV1 COMPATIBILITY FIX - Check and convert if needed
+            self._update_task_status(task_id, "processing", 2, "Checking video codec compatibility...")
             
-            cap = cv2.VideoCapture(str(input_video_path))
+            actual_video_path = await self._detect_and_convert_av1_if_needed(input_video_path)
+            is_converted = actual_video_path != input_video_path
+            
+            if is_converted:
+                logger.info(f"🔄 Using converted H.264 video for processing")
+                self._update_task_status(task_id, "processing", 5, "Using H.264 converted video...")
+            else:
+                self._update_task_status(task_id, "processing", 5, "Reading video properties...")
+            
+            # Get video properties from the (possibly converted) video
+            cap = cv2.VideoCapture(str(actual_video_path))
             if not cap.isOpened():
-                raise Exception(f"Could not open video: {input_video_path}")
+                # If even the converted video fails, this is a more serious issue
+                error_msg = f"Could not open video even after conversion attempt: {actual_video_path}"
+                if is_converted and actual_video_path.exists():
+                    actual_video_path.unlink()  # Clean up converted file
+                raise Exception(error_msg)
             
             original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -585,7 +746,7 @@ class AsyncVerticalCropService:
             audio_data = None
             if use_speaker_detection and self.vad:
                 self._update_task_status(task_id, "processing", 17, "Extracting audio for voice detection...")
-                audio_data = await self.extract_audio_for_vad(input_video_path)
+                audio_data = await self.extract_audio_for_vad(actual_video_path)
             
             # Process video with smart scene awareness
             self._update_task_status(task_id, "processing", 20, "Starting smart video processing...")
@@ -593,7 +754,7 @@ class AsyncVerticalCropService:
             # ALWAYS continue to video processing regardless of scene detection result
             logger.info(f"🎬 Starting video frame processing...")
             result = await self._process_video_frames_smart(
-                task_id, input_video_path, output_video_path, 
+                task_id, actual_video_path, output_video_path, 
                 target_size, smoothing_config, audio_data,
                 use_speaker_detection, enable_group_conversation_framing, fps, total_frames, scene_data,
                 ignore_micro_cuts, micro_cut_threshold
@@ -621,6 +782,14 @@ class AsyncVerticalCropService:
                     f"Processing failed: {result.get('error', 'Unknown error')}"
                 )
             
+            # 🧹 Cleanup converted H.264 file if we created one
+            if is_converted and actual_video_path.exists():
+                try:
+                    actual_video_path.unlink()
+                    logger.info(f"🧹 Cleaned up temporary H.264 file: {actual_video_path.name}")
+                except Exception as cleanup_error:
+                    logger.warning(f"⚠️ Could not clean up temporary file {actual_video_path.name}: {cleanup_error}")
+            
             return {
                 "success": result["success"],
                 "task_id": task_id,
@@ -632,6 +801,15 @@ class AsyncVerticalCropService:
             
         except Exception as e:
             logger.error(f"❌ Smart vertical crop failed for task {task_id}: {str(e)}")
+            
+            # 🧹 Cleanup converted H.264 file if we created one (even on error)
+            if is_converted and actual_video_path.exists():
+                try:
+                    actual_video_path.unlink()
+                    logger.info(f"🧹 Cleaned up temporary H.264 file after error: {actual_video_path.name}")
+                except Exception as cleanup_error:
+                    logger.warning(f"⚠️ Could not clean up temporary file {actual_video_path.name}: {cleanup_error}")
+            
             self._update_task_status(task_id, "failed", 0, f"Error: {str(e)}")
             return {
                 "success": False,
