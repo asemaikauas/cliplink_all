@@ -9,9 +9,9 @@ ENV PYTHONPATH=/app
 # Install system dependencies including build tools for Python packages
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    libdav1d5 \
+    libdav1d6 \
     libdav1d-dev \
-    libaom0 \
+    libaom3 \
     libaom-dev \
     libgl1-mesa-glx \
     libglib2.0-0 \
