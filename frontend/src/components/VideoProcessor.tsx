@@ -327,8 +327,14 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     };
 
     const pollTaskProgress = async (taskId: string) => {
+        let retryCount = 0;
+        const maxRetries = 5;
+
         const pollInterval = setInterval(async () => {
             try {
+                console.log(`🔄 Polling task status: ${taskId} (attempt ${retryCount + 1})`);
+                console.log(`🌐 API URL: ${apiUrl(`/api/workflow/status/${taskId}`)}`);
+
                 const response = await fetch(apiUrl(`/api/workflow/status/${taskId}`), {
                     headers: {
                         'Content-Type': 'application/json'
@@ -336,11 +342,14 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Status check failed: ${response.status}`);
+                    throw new Error(`Status check failed: ${response.status} ${response.statusText}`);
                 }
 
                 const taskData = await response.json();
                 console.log('📊 Task progress:', taskData);
+
+                // Reset retry count on successful response
+                retryCount = 0;
 
                 setCurrentTask(taskData);
 
@@ -400,15 +409,31 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 }
 
             } catch (err) {
-                console.error('❌ Error polling task progress:', err);
-                clearInterval(pollInterval);
-                setIsProcessing(false);
-                setHasActiveTask(false);
-                setError('Failed to check processing status');
+                retryCount++;
+                console.error(`❌ Error polling task progress (attempt ${retryCount}):`, err);
+                console.error(`🔍 Error details:`, {
+                    message: err instanceof Error ? err.message : 'Unknown error',
+                    taskId: taskId,
+                    apiUrl: apiUrl(`/api/workflow/status/${taskId}`),
+                    config: config.API_BASE_URL
+                });
 
-                // Clean up localStorage on error
-                localStorage.removeItem('cliplink_active_task_id');
-                localStorage.removeItem('cliplink_active_task_data');
+                // Only show error after max retries
+                if (retryCount >= maxRetries) {
+                    clearInterval(pollInterval);
+                    setIsProcessing(false);
+                    setHasActiveTask(false);
+
+                    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                    setError(`Failed to check processing status: ${errorMessage}. Please check if the backend is running at ${config.API_BASE_URL}`);
+
+                    // Clean up localStorage on error
+                    localStorage.removeItem('cliplink_active_task_id');
+                    localStorage.removeItem('cliplink_active_task_data');
+                } else {
+                    // Continue polling on retry
+                    console.log(`🔄 Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
+                }
             }
         }, 2000); // Poll every 2 seconds
     };
@@ -520,6 +545,32 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
         setThumbnailErrors(new Set());
     };
 
+    const testBackendConnection = async () => {
+        try {
+            console.log('🔍 Testing backend connection...');
+            console.log('🌐 API Base URL:', config.API_BASE_URL);
+
+            const response = await fetch(apiUrl('/health'), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Backend connection successful:', data);
+                return true;
+            } else {
+                console.error('❌ Backend health check failed:', response.status, response.statusText);
+                return false;
+            }
+        } catch (err) {
+            console.error('❌ Backend connection test failed:', err);
+            return false;
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* URL Input Section */}
@@ -571,10 +622,38 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
             {/* Error Display */}
             {error && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                    <div className="flex">
+                    <div className="flex justify-between items-start">
                         <div className="text-red-800">
                             <h4 className="font-medium">Error</h4>
                             <p className="text-sm mt-1">{error}</p>
+                        </div>
+                        <div className="flex gap-2">
+                            {error.includes('Failed to check processing status') && currentTask?.task_id && (
+                                <button
+                                    onClick={() => {
+                                        setError(null);
+                                        setIsProcessing(true);
+                                        setHasActiveTask(true);
+                                        pollTaskProgress(currentTask.task_id);
+                                    }}
+                                    className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+                                >
+                                    Retry
+                                </button>
+                            )}
+                            <button
+                                onClick={async () => {
+                                    const isConnected = await testBackendConnection();
+                                    if (isConnected) {
+                                        setError('Backend connection successful! Please try again.');
+                                    } else {
+                                        setError('Backend connection failed. Please check if the backend is running.');
+                                    }
+                                }}
+                                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                            >
+                                Test Connection
+                            </button>
                         </div>
                     </div>
                 </div>
