@@ -92,10 +92,10 @@ export default function EtailLanding() {
 
             <header className="sticky top-0 w-full z-20 bg-black/60 backdrop-blur-md flex justify-between items-center px-4 sm:px-8 py-4 border-b border-purple-900">
                 <div className="text-xl sm:text-2xl font-extrabold text-purple-400 tracking-tight">ClipLink</div>
-                <div className="flex items-center space-x-2 sm:space-x-4">
+                <div className="flex items-center gap-2 sm:gap-4">
                     <SignedOut>
                         <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
-                            <button className="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-4 sm:px-6 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base">
+                            <button className="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-4 sm:px-6 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base flex-shrink-0">
                                 Sign In
                             </button>
                         </SignInButton>
@@ -103,11 +103,13 @@ export default function EtailLanding() {
                     <SignedIn>
                         <button
                             onClick={() => window.location.href = '/dashboard'}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all mr-1 sm:mr-2 text-sm sm:text-base"
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base flex-shrink-0"
                         >
                             Home
                         </button>
-                        <UserButton afterSignOutUrl="/" />
+                        <div className="flex-shrink-0">
+                            <UserButton afterSignOutUrl="/" />
+                        </div>
                     </SignedIn>
                 </div>
             </header>
@@ -119,9 +121,10 @@ export default function EtailLanding() {
                 <p className="text-lg sm:text-xl md:text-2xl text-gray-300 text-center mb-12 max-w-2xl px-4">
                     Turn any long video into up to 10 viral clips for Shorts, TikTok, and Reels. No editing. No hassle. Just a link.
                 </p>
-                <div className="w-full flex flex-col items-center mt-6 px-4">
+                <div className="w-full flex flex-col items-center mt-6 px-4 space-y-4">
+                    {/* Input Container */}
                     <div
-                        className="w-full max-w-2xl flex flex-col sm:flex-row items-center gap-2 sm:gap-4 bg-[#19181d]/90 border-4 border-purple-700 rounded-full shadow-2xl backdrop-blur-md mb-4 p-2 sm:p-0"
+                        className="w-full max-w-xl bg-[#19181d]/90 border-4 border-purple-700 rounded-full shadow-2xl backdrop-blur-md"
                         style={{
                             boxShadow: '0 0 16px 0 #a855f7, 0 2px 8px 0 #0008',
                         }}
@@ -131,13 +134,17 @@ export default function EtailLanding() {
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             placeholder="Paste YouTube Link Here.."
-                            className="w-full sm:flex-1 bg-transparent outline-none text-gray-200 text-lg sm:text-xl placeholder-gray-500 px-4 py-3 sm:py-4 rounded-full sm:rounded-none"
+                            className="w-full bg-transparent outline-none text-gray-200 text-lg sm:text-xl placeholder-gray-500 px-6 py-4 rounded-full border-0"
                         />
+                    </div>
+
+                    {/* Button Container */}
+                    <div className="w-full flex justify-center">
                         <SignedOut>
                             <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                                 <button
                                     onClick={() => saveUrlForLater(inputValue)}
-                                    className="w-full sm:w-auto px-6 py-3 text-white font-bold text-sm sm:text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap"
+                                    className="px-8 py-4 text-white font-bold text-lg sm:text-xl rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap shadow-lg"
                                 >
                                     Get free clips
                                 </button>
@@ -153,13 +160,14 @@ export default function EtailLanding() {
                                         alert('Please enter a YouTube URL first');
                                     }
                                 }}
-                                className="w-full sm:w-auto px-6 py-3 text-white font-bold text-sm sm:text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap"
+                                className="px-8 py-4 text-white font-bold text-lg sm:text-xl rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap shadow-lg"
                             >
                                 Get free clips
                             </button>
                         </SignedIn>
                     </div>
-                    <span className="text-gray-400 text-sm sm:text-base mt-2 text-center">No signup required. 100% free to start.</span>
+
+                    <span className="text-gray-400 text-sm sm:text-base text-center">No signup required. 100% free to start.</span>
                 </div>
                 {error && <div className="text-red-500 mt-4">{error}</div>}
                 {transcript && (
