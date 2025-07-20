@@ -422,7 +422,7 @@ async def _process_video_workflow_async(
         )
         
         # Step 2: Download video FIRST (10-25%)
-        _update_workflow_progress(task_id, "download", 10, f"📥 Downloading video in {quality} quality...")
+        _update_workflow_progress(task_id, "download", 10, f" Processing video in {quality} quality...")
         
         try:
             video_path = await _run_blocking_task(download_video, youtube_url, quality)
@@ -441,7 +441,7 @@ async def _process_video_workflow_async(
             raise Exception(f"Download failed: {str(e)}")
         
         # Step 3: Extract transcript (25-40%)
-        _update_workflow_progress(task_id, "transcript", 25, "📄 Extracting transcript...")
+        _update_workflow_progress(task_id, "transcript", 25, "Analyzing video...")
         video_id = video_info['id']
         
         raw_transcript_data = await _run_blocking_task(fetch_youtube_transcript, video_id)
@@ -457,7 +457,7 @@ async def _process_video_workflow_async(
         )
         
         # Step 4: Gemini Analysis (40-55%)
-        _update_workflow_progress(task_id, "analysis", 40, "🤖 Analyzing with Gemini AI...")
+        _update_workflow_progress(task_id, "analysis", 40, "Selecting the viral segments...")
         gemini_analysis = await analyze_transcript_with_gemini(transcript_result)
         
         if not gemini_analysis.get("gemini_analysis", {}).get("viral_segments"):
@@ -473,7 +473,7 @@ async def _process_video_workflow_async(
         print(f"✅ Video ready for processing: {video_path} ({file_size_mb:.1f} MB)")
         
         # --- Steps 5, 6, 7: Parallel Processing of Viral Segments (Vertical Crop + Burn Subtitles + Upload to Azure) ---
-        _update_workflow_progress(task_id, "parallel_processing", 55, f"🚀 Starting parallel processing for {len(viral_segments)} viral segments...")
+        _update_workflow_progress(task_id, "parallel_processing", 55, f"Started cropping for {len(viral_segments)} viral segments...")
         
         parallel_start_time = time.time()
         

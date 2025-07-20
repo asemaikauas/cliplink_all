@@ -61,6 +61,9 @@ backend/app/__pycache__/
 backend/test/__pycache__/
 backend/tests/__pycache__/
 
+backend/H264_FIRST_SOLUTION.md
+backend/test_h264_first.py 
+
 # ====================
 # Node.js / Frontend
 # ====================
@@ -315,3 +318,6 @@ temp/
 tmp/
 .temp/
 .tmp/ 
+
+APIFY_YOUTUBE_INTEGRATION.md
+test_apify_youtube.py 
