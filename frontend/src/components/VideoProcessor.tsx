@@ -13,6 +13,7 @@ interface ProcessingTask {
     status: 'pending' | 'processing' | 'done' | 'failed';
     progress: number;
     stage: string;
+    current_step?: string;
     message: string;
     clips?: Array<{
         id: string;
@@ -418,6 +419,56 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    const getWaitTimeDisplay = (task: ProcessingTask): string => {
+        if (task.status === 'done') {
+            return 'Ready! 🎉';
+        }
+
+        if (task.status === 'failed') {
+            return 'Failed ❌';
+        }
+
+        // Map stages to estimated completion times (in minutes)
+        const stageTimeMap: { [key: string]: number } = {
+            'queued': 8,
+            'init': 8,
+            'video_info': 7.5,
+            'download': 7,
+            'transcript': 6,
+            'analysis': 5,
+            'parallel_processing': 3,
+            'finalizing': 1,
+            'azure_upload': 2,
+            'processing': 6, // fallback
+            'pending': 8 // fallback
+        };
+
+        // Get the current stage and its estimated remaining time
+        const currentStage = task.stage || task.current_step || 'processing';
+        const estimatedTotalTime = stageTimeMap[currentStage] || 6;
+
+        // Calculate remaining time based on progress
+        const progressPercent = task.progress || 0;
+        const remainingPercent = Math.max(0, 100 - progressPercent);
+        const remainingMinutes = Math.ceil((estimatedTotalTime * remainingPercent) / 100);
+
+        // Ensure minimum of 1 minute and maximum of estimated time
+        const displayMinutes = Math.max(1, Math.min(remainingMinutes, estimatedTotalTime));
+
+        // Format the display text with more dynamic messaging
+        if (displayMinutes === 1) {
+            return `Almost done! 1 min ⏳`;
+        } else if (displayMinutes <= 2) {
+            return `Wait: ${displayMinutes} min ⏳`;
+        } else if (displayMinutes <= 3) {
+            return `Wait: ${displayMinutes} min ⏳`;
+        } else if (displayMinutes >= 7) {
+            return `Wait: ${displayMinutes} min ⏳`;
+        } else {
+            return `Wait: ${displayMinutes} min ⏳`;
+        }
+    };
+
     const openYouTubeClip = (clip: Clip) => {
         // Extract YouTube video ID from the current URL
         const extractVideoId = (url: string) => {
@@ -538,7 +589,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
                     <div className="space-y-4">
                         <div className="flex justify-between text-sm">
-                            <span className="font-medium text-gray-700">Stage: {currentTask.stage}</span>
+                            <span className="font-medium text-gray-700">{getWaitTimeDisplay(currentTask)}</span>
                             <span className="text-gray-500">{currentTask.progress}%</span>
                         </div>
 
@@ -549,7 +600,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                             ></div>
                         </div>
 
-                        <p className="text-sm text-gray-600">{currentTask.message}</p>
+                        <p className="text-sm text-gray-600">
+                            {currentTask.status === 'done' ? 'Your clips are ready!' : currentTask.message}
+                        </p>
 
                         {currentTask.status === 'processing' && (
                             <div className="flex items-center space-x-2">
