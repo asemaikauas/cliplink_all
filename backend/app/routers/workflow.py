@@ -198,22 +198,45 @@ async def _process_single_viral_segment_parallel(
             vertical_clip_path = clips_dir / f"{safe_title}_vertical.mp4"
             
             from app.services.vertical_crop_async import crop_video_to_vertical_async
+            import asyncio
             
-            crop_result = await crop_video_to_vertical_async(
-                input_path=temp_horizontal_clip_path,
-                output_path=vertical_clip_path,
-                use_speaker_detection=True,
-                use_smart_scene_detection=False,  # 🚀 DISABLED for performance
-                smoothing_strength=smoothing_strength
-            )
-            
-            if not crop_result.get("success"):
-                raise Exception(f"Vertical cropping failed: {crop_result.get('error')}")
-            
-            processing_clip_path = vertical_clip_path
-            # Clean up the temp horizontal clip now that we have the vertical one
-            if temp_horizontal_clip_path.exists():
-                temp_horizontal_clip_path.unlink()
+            try:
+                # Add timeout protection for vertical cropping (5 minutes max)
+                crop_result = await asyncio.wait_for(
+                    crop_video_to_vertical_async(
+                        input_path=temp_horizontal_clip_path,
+                        output_path=vertical_clip_path,
+                        use_speaker_detection=True,
+                        use_smart_scene_detection=False,  # 🚀 DISABLED for performance
+                        smoothing_strength=smoothing_strength,
+                        task_id=f"{task_id}_seg_{segment_index+1}" if task_id else None
+                    ),
+                    timeout=300.0  # 5 minutes timeout
+                )
+                
+                if not crop_result.get("success"):
+                    raise Exception(f"Vertical cropping failed: {crop_result.get('error')}")
+                
+                processing_clip_path = vertical_clip_path
+                print(f"   ✅ Vertical crop completed successfully")
+                
+                # Clean up the temp horizontal clip now that we have the vertical one
+                if temp_horizontal_clip_path.exists():
+                    temp_horizontal_clip_path.unlink()
+                    
+            except asyncio.TimeoutError:
+                print(f"   ❌ Vertical cropping timed out after 5 minutes.")
+                # Clean up any partial vertical crop file
+                if vertical_clip_path.exists():
+                    vertical_clip_path.unlink()
+                raise Exception("Vertical cropping timed out after 5 minutes")
+                    
+            except Exception as crop_error:
+                print(f"   ❌ Vertical cropping failed: {crop_error}")
+                # Clean up any partial vertical crop file
+                if vertical_clip_path.exists():
+                    vertical_clip_path.unlink()
+                raise Exception(f"Vertical cropping failed: {crop_error}")
         
         # --- 2.5. Thumbnail Generation (after vertical cropping) ---
         print(f"   - Generating thumbnail...")
@@ -492,8 +515,44 @@ async def _process_video_workflow_async(
             )
             tasks.append(task)
             
-        # Run all processing tasks concurrently and wait for them to complete
-        processed_results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Run all processing tasks concurrently with overall timeout protection
+        try:
+            # Add overall timeout for parallel processing (15 minutes max)
+            processed_results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=900.0  # 15 minutes timeout for entire parallel processing
+            )
+        except asyncio.TimeoutError:
+            print(f"❌ Parallel processing timed out after 15 minutes. Attempting to cancel tasks...")
+            # Cancel all running tasks
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            
+            # Try to get partial results
+            processed_results = []
+            for i, task in enumerate(tasks):
+                try:
+                    if not task.done():
+                        result = await asyncio.wait_for(task, timeout=5.0)  # Quick timeout for remaining tasks
+                    else:
+                        result = task.result()
+                    processed_results.append(result)
+                except (asyncio.TimeoutError, asyncio.CancelledError, Exception) as task_error:
+                    print(f"❌ Task {i+1} failed or was cancelled: {task_error}")
+                    processed_results.append({"success": False, "error": f"Task timed out or cancelled: {task_error}", "clip_path": None})
+                    
+        except Exception as gather_error:
+            print(f"❌ Error in parallel processing: {gather_error}")
+            # If gather fails, try to process results individually
+            processed_results = []
+            for i, task in enumerate(tasks):
+                try:
+                    result = await task
+                    processed_results.append(result)
+                except Exception as task_error:
+                    print(f"❌ Task {i+1} failed: {task_error}")
+                    processed_results.append({"success": False, "error": str(task_error), "clip_path": None})
         
         parallel_duration = time.time() - parallel_start_time
         print(f"🎬 All parallel processing finished in {parallel_duration:.2f} seconds.")
@@ -507,8 +566,13 @@ async def _process_video_workflow_async(
         failed_clips = 0
         azure_uploads_successful = 0
         
-        for result in processed_results:
-            if isinstance(result, Exception) or not result.get("success"):
+        for i, result in enumerate(processed_results):
+            if isinstance(result, Exception):
+                print(f"❌ Segment {i+1} failed with exception: {result}")
+                failed_clips += 1
+                continue
+            elif not result.get("success"):
+                print(f"❌ Segment {i+1} failed: {result.get('error', 'Unknown error')}")
                 failed_clips += 1
                 continue
             
@@ -1168,11 +1232,40 @@ async def get_workflow_status(task_id: str):
         if 'stage' not in response_data:
             response_data['stage'] = response_data.get('current_step', 'unknown')
         
+        # Add detailed error information if task failed
+        if response_data.get('status') == 'failed' and response_data.get('error'):
+            error_msg = response_data['error']
+            if 'timeout' in error_msg.lower():
+                response_data['error_details'] = {
+                    'type': 'timeout',
+                    'message': 'Processing timed out. This can happen with large videos or during intensive operations like vertical cropping.',
+                    'suggestion': 'Try processing a shorter video or disable vertical cropping to reduce processing time.'
+                }
+            elif 'vertical crop' in error_msg.lower():
+                response_data['error_details'] = {
+                    'type': 'vertical_crop_failure',
+                    'message': 'Vertical cropping failed. This is a CPU-intensive operation that can fail on some systems.',
+                    'suggestion': 'Try processing a shorter video or check if your system has sufficient CPU resources.'
+                }
+            elif 'memory' in error_msg.lower() or 'out of memory' in error_msg.lower():
+                response_data['error_details'] = {
+                    'type': 'memory_error',
+                    'message': 'Insufficient memory for video processing.',
+                    'suggestion': 'Try processing a shorter video or lower quality setting.'
+                }
+            else:
+                response_data['error_details'] = {
+                    'type': 'general_error',
+                    'message': error_msg,
+                    'suggestion': 'Please try again or contact support if the issue persists.'
+                }
+        
         return response_data
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error in status endpoint for task {task_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get task status: {str(e)}"
