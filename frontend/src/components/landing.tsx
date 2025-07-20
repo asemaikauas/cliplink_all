@@ -90,12 +90,12 @@ export default function EtailLanding() {
                 <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-gradient-to-tr from-purple-600 to-black opacity-30 rounded-full blur-2xl" />
             </div>
 
-            <header className="sticky top-0 w-full z-20 bg-black/60 backdrop-blur-md flex justify-between items-center px-8 py-4 border-b border-purple-900">
-                <div className="text-2xl font-extrabold text-purple-400 tracking-tight">ClipLink</div>
-                <div className="flex items-center space-x-4">
+            <header className="sticky top-0 w-full z-20 bg-black/60 backdrop-blur-md flex justify-between items-center px-4 sm:px-8 py-4 border-b border-purple-900">
+                <div className="text-xl sm:text-2xl font-extrabold text-purple-400 tracking-tight">ClipLink</div>
+                <div className="flex items-center space-x-2 sm:space-x-4">
                     <SignedOut>
                         <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
-                            <button className="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-6 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all">
+                            <button className="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-4 sm:px-6 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base">
                                 Sign In
                             </button>
                         </SignInButton>
@@ -103,7 +103,7 @@ export default function EtailLanding() {
                     <SignedIn>
                         <button
                             onClick={() => window.location.href = '/dashboard'}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all mr-2"
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all mr-1 sm:mr-2 text-sm sm:text-base"
                         >
                             Home
                         </button>
@@ -113,18 +113,17 @@ export default function EtailLanding() {
             </header>
 
             <section className="flex flex-col items-center justify-center flex-1 py-20 z-10">
-                <h1 className="text-5xl md:text-7xl font-extrabold text-center bg-gradient-to-r from-purple-400 via-white to-purple-600 bg-clip-text text-transparent drop-shadow-lg mb-6">
+                <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold text-center bg-gradient-to-r from-purple-400 via-white to-purple-600 bg-clip-text text-transparent drop-shadow-lg mb-6 px-4">
                     Instantly Go Viral
                 </h1>
-                <p className="text-xl md:text-2xl text-gray-300 text-center mb-12 max-w-2xl">
+                <p className="text-lg sm:text-xl md:text-2xl text-gray-300 text-center mb-12 max-w-2xl px-4">
                     Turn any long video into up to 10 viral clips for Shorts, TikTok, and Reels. No editing. No hassle. Just a link.
                 </p>
-                <div className="w-full flex flex-col items-center mt-6">
+                <div className="w-full flex flex-col items-center mt-6 px-4">
                     <div
-                        className="w-full max-w-2xl flex items-center gap-4 bg-[#19181d]/90 border-4 border-purple-700 rounded-full shadow-2xl backdrop-blur-md mb-4"
+                        className="w-full max-w-2xl flex flex-col sm:flex-row items-center gap-2 sm:gap-4 bg-[#19181d]/90 border-4 border-purple-700 rounded-full shadow-2xl backdrop-blur-md mb-4 p-2 sm:p-0"
                         style={{
                             boxShadow: '0 0 16px 0 #a855f7, 0 2px 8px 0 #0008',
-                            padding: '0',
                         }}
                     >
                         <input
@@ -132,13 +131,13 @@ export default function EtailLanding() {
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             placeholder="Paste YouTube Link Here.."
-                            className="ml-2 flex-1 bg-transparent outline-none text-gray-200 text-xl placeholder-gray-500 px-4 pr-10 py-4"
+                            className="w-full sm:flex-1 bg-transparent outline-none text-gray-200 text-lg sm:text-xl placeholder-gray-500 px-4 py-3 sm:py-4 rounded-full sm:rounded-none"
                         />
                         <SignedOut>
                             <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                                 <button
                                     onClick={() => saveUrlForLater(inputValue)}
-                                    className="ml-2 mr-2 px-5 py-3 text-white font-bold text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all"
+                                    className="w-full sm:w-auto px-6 py-3 text-white font-bold text-sm sm:text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap"
                                 >
                                     Get free clips
                                 </button>
@@ -154,14 +153,13 @@ export default function EtailLanding() {
                                         alert('Please enter a YouTube URL first');
                                     }
                                 }}
-                                className="ml-2 mr-2 px-5 py-3 text-white font-bold text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all"
+                                className="w-full sm:w-auto px-6 py-3 text-white font-bold text-sm sm:text-base rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap"
                             >
                                 Get free clips
                             </button>
                         </SignedIn>
-
                     </div>
-                    <span className="text-gray-400 text-base mt-2">No signup required. 100% free to start.</span>
+                    <span className="text-gray-400 text-sm sm:text-base mt-2 text-center">No signup required. 100% free to start.</span>
                 </div>
                 {error && <div className="text-red-500 mt-4">{error}</div>}
                 {transcript && (
