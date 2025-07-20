@@ -48,6 +48,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const [hasActiveTask, setHasActiveTask] = useState(false);
     const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
     const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set());
+    const [isRestoringTask, setIsRestoringTask] = useState(false);
 
     // Load clips and YouTube URL from localStorage on component mount
     useEffect(() => {
@@ -92,12 +93,155 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
         }
     }, [youtubeUrl, onUrlChange]);
 
+    // Cleanup function for component unmount
+    useEffect(() => {
+        return () => {
+            // Clean up any active polling intervals when component unmounts
+            // Note: The polling intervals are cleared in the pollTaskProgress function
+            // when tasks complete, so this is just a safety measure
+        };
+    }, []);
+
+    // Handle page visibility changes (when user switches tabs or minimizes browser)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden && hasActiveTask && currentTask) {
+                // User came back to the tab, refresh the task status
+                console.log('🔄 Page became visible, refreshing task status...');
+                if (currentTask.task_id) {
+                    pollTaskProgress(currentTask.task_id);
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [hasActiveTask, currentTask]);
+
     const checkForActiveTask = async () => {
-        // Note: Since we're using the comprehensive workflow which doesn't save to database,
-        // we can't check for active tasks from the database. For now, we assume no active tasks.
-        // In a production setup, you might want to store active task IDs in localStorage
-        // or implement a different task tracking mechanism.
-        setHasActiveTask(false);
+        try {
+            // Check for active task ID in localStorage
+            const activeTaskId = localStorage.getItem('cliplink_active_task_id');
+            const activeTaskData = localStorage.getItem('cliplink_active_task_data');
+
+            if (activeTaskId && activeTaskData) {
+                setIsRestoringTask(true);
+                try {
+                    const taskData = JSON.parse(activeTaskData);
+
+                    // Check if the task is still active by polling the backend
+                    const response = await fetch(apiUrl(`/api/workflow/status/${activeTaskId}`), {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const currentTaskStatus = await response.json();
+                        console.log('🔄 Found active task on page load:', currentTaskStatus);
+
+                        // If task is still processing, restore the state
+                        if (currentTaskStatus.status === 'processing' || currentTaskStatus.status === 'pending') {
+                            setCurrentTask(currentTaskStatus);
+                            setIsProcessing(true);
+                            setHasActiveTask(true);
+
+                            // Restore YouTube URL if not already set
+                            if (currentTaskStatus.youtube_url && !youtubeUrl) {
+                                setYoutubeUrl(currentTaskStatus.youtube_url);
+                            }
+
+                            // Resume polling
+                            pollTaskProgress(activeTaskId);
+                            setIsRestoringTask(false);
+                            return;
+                        } else if (currentTaskStatus.status === 'done') {
+                            // Task completed while page was closed, restore results
+                            console.log('✅ Task completed while page was closed, restoring results');
+                            setCurrentTask(currentTaskStatus);
+                            setIsProcessing(false);
+                            setHasActiveTask(false);
+
+                            // Restore clips from the completed task
+                            if (currentTaskStatus.result && currentTaskStatus.result.files_created && currentTaskStatus.result.files_created.final_clip_paths) {
+                                const clipPaths = currentTaskStatus.result.files_created.final_clip_paths;
+                                const segments = currentTaskStatus.result.analysis_results?.segments || [];
+                                const thumbnails = currentTaskStatus.result.files_created?.thumbnails || [];
+
+                                const generatedClips = clipPaths.map((path: string, index: number) => {
+                                    const segment = segments[index] || {};
+                                    const startTime = segment.start || 0;
+                                    const endTime = segment.end || 60;
+                                    const duration = segment.duration || (endTime - startTime);
+
+                                    const thumbnail = thumbnails.find((t: any) =>
+                                        t.clip_path === path || t.clip_id?.includes(String(index + 1))
+                                    );
+
+                                    return {
+                                        id: `clip-${index}`,
+                                        title: segment.title || `Clip ${index + 1}`,
+                                        start_time: startTime,
+                                        end_time: endTime,
+                                        duration: duration,
+                                        s3_url: path,
+                                        thumbnail_url: thumbnail?.thumbnail_path ?
+                                            `${config.API_BASE_URL}/${thumbnail.thumbnail_path}` : null,
+                                        clip_id: thumbnail?.clip_id
+                                    };
+                                });
+                                setClips(generatedClips);
+                            }
+
+                            // Restore YouTube URL if not already set
+                            if (currentTaskStatus.youtube_url && !youtubeUrl) {
+                                setYoutubeUrl(currentTaskStatus.youtube_url);
+                            }
+
+                            // Clean up localStorage
+                            localStorage.removeItem('cliplink_active_task_id');
+                            localStorage.removeItem('cliplink_active_task_data');
+                            setIsRestoringTask(false);
+                            return;
+                        } else if (currentTaskStatus.status === 'failed') {
+                            // Task failed while page was closed
+                            console.log('❌ Task failed while page was closed');
+                            setError(currentTaskStatus.error || 'Processing failed');
+                            setCurrentTask(currentTaskStatus);
+                            setIsProcessing(false);
+                            setHasActiveTask(false);
+
+                            // Restore YouTube URL if not already set
+                            if (currentTaskStatus.youtube_url && !youtubeUrl) {
+                                setYoutubeUrl(currentTaskStatus.youtube_url);
+                            }
+
+                            // Clean up localStorage
+                            localStorage.removeItem('cliplink_active_task_id');
+                            localStorage.removeItem('cliplink_active_task_data');
+                            setIsRestoringTask(false);
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking active task status:', error);
+                    setIsRestoringTask(false);
+                }
+            }
+
+            // No active task found or task is no longer valid
+            setHasActiveTask(false);
+            localStorage.removeItem('cliplink_active_task_id');
+            localStorage.removeItem('cliplink_active_task_data');
+            setIsRestoringTask(false);
+
+        } catch (error) {
+            console.error('Error checking for active tasks:', error);
+            setHasActiveTask(false);
+            setIsRestoringTask(false);
+        }
     };
 
     const startVideoProcessing = async () => {
@@ -156,6 +300,17 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     message: 'Starting video processing...'
                 });
 
+                // Save active task ID and data to localStorage
+                localStorage.setItem('cliplink_active_task_id', result.task_id);
+                localStorage.setItem('cliplink_active_task_data', JSON.stringify({
+                    task_id: result.task_id,
+                    youtube_url: youtubeUrl,
+                    status: 'processing',
+                    progress: 0,
+                    stage: 'initializing',
+                    message: 'Starting video processing...'
+                }));
+
                 // Start polling for progress
                 pollTaskProgress(result.task_id);
             } else {
@@ -188,10 +343,17 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
                 setCurrentTask(taskData);
 
+                // Update localStorage with current task data
+                localStorage.setItem('cliplink_active_task_data', JSON.stringify(taskData));
+
                 if (taskData.status === 'done') {
                     clearInterval(pollInterval);
                     setIsProcessing(false);
                     setHasActiveTask(false);
+
+                    // Clean up localStorage when task completes successfully
+                    localStorage.removeItem('cliplink_active_task_id');
+                    localStorage.removeItem('cliplink_active_task_data');
 
                     // Get clips from the task result
                     if (taskData.result && taskData.result.files_created && taskData.result.files_created.final_clip_paths) {
@@ -230,6 +392,10 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     setIsProcessing(false);
                     setHasActiveTask(false);
                     setError(taskData.error || 'Processing failed');
+
+                    // Clean up localStorage when task fails
+                    localStorage.removeItem('cliplink_active_task_id');
+                    localStorage.removeItem('cliplink_active_task_data');
                 }
 
             } catch (err) {
@@ -238,6 +404,10 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 setIsProcessing(false);
                 setHasActiveTask(false);
                 setError('Failed to check processing status');
+
+                // Clean up localStorage on error
+                localStorage.removeItem('cliplink_active_task_id');
+                localStorage.removeItem('cliplink_active_task_data');
             }
         }, 2000); // Poll every 2 seconds
     };
@@ -287,8 +457,15 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const clearAllClips = () => {
         setClips([]);
         setYoutubeUrl('');
+        setCurrentTask(null);
+        setIsProcessing(false);
+        setHasActiveTask(false);
+        setError(null);
+        setIsRestoringTask(false);
         localStorage.removeItem('cliplink_data');
         localStorage.removeItem('cliplink_clips'); // Remove old format if it exists
+        localStorage.removeItem('cliplink_active_task_id');
+        localStorage.removeItem('cliplink_active_task_data');
         setThumbnailErrors(new Set());
     };
 
@@ -326,6 +503,19 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     </div>
                 )}
             </div>
+
+            {/* Task Restoration Notification */}
+            {isRestoringTask && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                    <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+                        <div className="text-blue-800">
+                            <h4 className="font-medium">Restoring Session</h4>
+                            <p className="text-sm mt-1">Checking for ongoing video processing...</p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Error Display */}
             {error && (
