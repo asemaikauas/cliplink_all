@@ -61,8 +61,8 @@ async def download_youtube_video(
 ) -> YouTubeDownloadResponse:
     """Download YouTube video in specified quality.
     
-    This endpoint downloads YouTube videos using yt-dlp with optimized settings
-    for high-quality downloads including 8K support.
+    This endpoint downloads YouTube videos using Apify YouTube Video Downloader API
+    for reliable, high-quality downloads up to 4K resolution.
     
     Args:
         request: Download request with YouTube URL and quality preference
@@ -283,8 +283,11 @@ async def get_youtube_video_info(url: str):
 async def health_check():
     """Health check for YouTube download service."""
     try:
-        # Test yt-dlp availability
-        import yt_dlp
+        # Test Apify client availability and configuration
+        from app.services.youtube import youtube_service
+        
+        # Check if Apify token is configured
+        apify_configured = youtube_service.apify_token is not None
         
         # Test downloads directory
         downloads_dir = Path("downloads")
@@ -293,20 +296,23 @@ async def health_check():
         
         return {
             "status": "healthy",
-            "service": "youtube_downloader",
-            "yt_dlp_available": True,
+            "service": "youtube_downloader_apify",
+            "apify_configured": apify_configured,
             "downloads_directory": str(downloads_dir.absolute()),
             "downloads_writable": downloads_writable,
-            "supported_qualities": ["best", "8k", "4k", "1440p", "1080p", "720p"]
+            "supported_qualities": ["best", "8k", "4k", "1440p", "1080p", "720p"],
+            "max_resolution": "4K (2160p) via Apify"
         }
         
-    except ImportError:
-        raise HTTPException(
-            status_code=503,
-            detail="yt-dlp not available"
-        )
     except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Service unhealthy: {str(e)}"
-        ) 
+        # Check if it's specifically an Apify configuration error
+        if "APIFY_TOKEN" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail="Apify API token not configured. Please set APIFY_TOKEN environment variable."
+            )
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service unhealthy: {str(e)}"
+            ) 

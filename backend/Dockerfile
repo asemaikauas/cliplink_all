@@ -39,7 +39,8 @@ RUN conda update -n base -c conda-forge conda && \
 # Copy requirements (excluding opencv-python since we installed it via conda)
 COPY requirements.txt ./
 
-# Install remaining Python dependencies via pip (excluding opencv packages)
+# Install remaining Python dependencies via pip (excluding opencv packages) 
+# Note: apify-client is included in requirements.txt for YouTube downloads
 RUN sed '/opencv-python/d' requirements.txt > requirements_no_opencv.txt && \
     pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements_no_opencv.txt && \

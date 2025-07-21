@@ -11,7 +11,6 @@ import asyncio
 from apify_client import ApifyClient
 from dotenv import load_dotenv
 import shutil
-import yt_dlp
 
 # Load environment variables
 load_dotenv()
@@ -210,13 +209,13 @@ class YouTubeService:
 
     async def download_video(self, url: str, quality: str = "best") -> Path:
         """
-        Download YouTube video with automatic AV1 to H.264 conversion for processing compatibility
+        Download YouTube video using Apify YouTube Video Downloader API
         """
         try:
-            logger.info(f"🎬 Starting download: {url} (quality: {quality})")
+            logger.info(f"🎬 Starting Apify download: {url} (quality: {quality})")
             
             video_id_info = self._extract_video_id_from_url(url)
-            video_id = video_id_info["video_id"]
+            video_id = video_id_info["id"]
             
             # Check if already downloaded
             existing_file = self._find_downloaded_file(video_id, quality)
@@ -224,32 +223,45 @@ class YouTubeService:
                 logger.info(f"✅ Using existing download: {existing_file}")
                 return existing_file
             
-            # Configure yt-dlp options with H.264 priority
-            format_selector = self._get_h264_quality_priorities(quality)
+            # Map quality to Apify-supported resolution
+            apify_quality = self.quality_map.get(quality, "1080p")
+            logger.info(f"📊 Mapped quality '{quality}' to Apify resolution: {apify_quality}")
             
-            ydl_opts = {
-                'format': format_selector,
-                'outtmpl': os.path.join(self.downloads_dir, f'{video_id}_%(height)sp_%(vcodec)s.%(ext)s'),
-                'noplaylist': True,
-                'extract_flat': False,
-                'writeinfojson': False,
-                'writesubtitles': False,
-                'writeautomaticsub': False,
-                'ignoreerrors': False,
-                'no_warnings': False,
-                'noprogress': True,
-                'quiet': False,
-                'verbose': False,
+            # Call Apify YouTube Video Downloader Actor
+            logger.info("🔄 Calling Apify YouTube Video Downloader...")
+            run_input = {
+                "urls": [url],
+                "quality": apify_quality,
+                "downloadMode": "video"
             }
             
-            # Download with yt-dlp
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+            # Run the Apify Actor
+            run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
             
-            # Find the downloaded file
-            downloaded_file = self._find_downloaded_file(video_id, quality)
-            if not downloaded_file:
-                raise DownloadError("Download completed but file not found")
+            # Get results from the Actor run
+            results = []
+            for item in self.client.dataset(run["defaultDatasetId"]).iterate_items():
+                results.append(item)
+            
+            if not results:
+                raise DownloadError("No download results returned from Apify")
+            
+            result = results[0]
+            
+            # Check if download was successful
+            if not result.get("downloadUrl"):
+                error_msg = result.get("error", "Unknown error from Apify")
+                raise DownloadError(f"Apify download failed: {error_msg}")
+            
+            download_url = result["downloadUrl"]
+            title = result.get("title", "Unknown Title")
+            resolution = result.get("resolution", apify_quality)
+            
+            logger.info(f"📥 Got download URL from Apify. Title: {title}")
+            logger.info(f"📊 Resolution: {resolution}")
+            
+            # Download the video file from Apify's download URL
+            downloaded_file = self._download_file_from_url(download_url, video_id, title, resolution)
             
             logger.info(f"📁 Downloaded: {downloaded_file}")
             
@@ -259,11 +271,11 @@ class YouTubeService:
             return processed_file
             
         except Exception as e:
-            logger.error(f"Download failed: {str(e)}")
+            logger.error(f"Apify download failed: {str(e)}")
             if "Video unavailable" in str(e):
                 raise DownloadError(f"Video is unavailable or private: {url}")
-            elif "No video formats found" in str(e):
-                raise DownloadError(f"No downloadable video formats found for: {url}")
+            elif "private" in str(e).lower():
+                raise DownloadError(f"Video is private or restricted: {url}")
             else:
                 raise DownloadError(f"Download failed: {str(e)}")
 
@@ -393,32 +405,7 @@ class YouTubeService:
             logger.error(f"❌ H.264 preprocessing exception: {e}")
             return input_path
     
-    def _get_h264_quality_priorities(self, requested_quality: str) -> List[str]:
-        """
-        Get quality priorities optimized for H.264 downloads.
-        Prioritizes the requested quality first, then falls back to lower qualities if needed.
-        """
-        # Quality preferences based on YouTube's typical codec distribution
-        # 720p: ~90% H.264, 1080p: ~70% H.264, 1440p+: ~50% H.264
-        
-        if requested_quality == "best":
-            # For "best", try highest quality first, then fall back
-            return ["2160p", "1440p", "1080p", "720p"]
-        elif requested_quality == "1080p":
-            # For 1080p, try 1080p first, then fall back
-            return ["1080p", "720p", "1440p", "2160p"]
-        elif requested_quality == "720p":
-            # For 720p, try 720p first, then alternatives
-            return ["720p", "1080p", "1440p"]
-        elif requested_quality in ["1440p", "2160p", "4k"]:
-            # For high resolutions, try requested first, then fall back
-            return [requested_quality, "1080p", "720p", "1440p", "2160p"]
-        elif requested_quality == "8k":
-            # 8K is almost always AV1, so try 4K first, then fall back
-            return ["2160p", "1440p", "1080p", "720p"]
-        else:
-            # Default: try requested quality first, then fall back
-            return [requested_quality, "1080p", "720p", "1440p", "2160p"]
+
     
     def _verify_video_codec(self, video_path: Path) -> Dict[str, str]:
         """Verify the codec of a downloaded video file"""
