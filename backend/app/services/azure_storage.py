@@ -43,12 +43,13 @@ class AzureBlobStorageService:
         self.blob_service_client = None
         self._initialize_client()
         
-        # Container names for different file types
+        # Container names for different file types (matching existing Azure containers)
+        base_name = self.container_name.lower()  # Keep original name format
         self.containers = {
-            "temp_videos": f"{self.container_name}-temp-videos",  # Temporary storage for processing
-            "clips": f"{self.container_name}-clips",             # Permanent clip storage
-            "thumbnails": f"{self.container_name}-thumbnails",   # Permanent thumbnail storage
-            "temp": f"{self.container_name}-temp"                # General temporary files
+            "temp_videos": f"{base_name}-temp-videos",  # Temporary storage for processing (if needed)
+            "clips": f"{base_name}-clips",              # Permanent clip storage → onelinkdb-clips
+            "thumbnails": f"{base_name}-thumbnails",    # Permanent thumbnail storage → onelinkdb-thumbnails
+            "temp": f"{base_name}-temp"                 # General temporary files (if needed)
         }
     
     def _initialize_client(self):
@@ -95,6 +96,15 @@ class AzureBlobStorageService:
             logger.error(f"Failed to ensure containers exist: {str(e)}")
             raise
     
+    def _sanitize_blob_name(self, blob_name: str) -> str:
+        """Sanitize blob name for Azure Blob Storage compliance"""
+        import urllib.parse
+        # Replace any problematic characters and URL encode
+        sanitized = blob_name.replace("\\", "/")  # Normalize path separators
+        # URL encode to handle special characters
+        sanitized = urllib.parse.quote(sanitized, safe='/')
+        return sanitized
+    
     async def upload_file(
         self, 
         file_path: str, 
@@ -118,6 +128,13 @@ class AzureBlobStorageService:
         """
         try:
             container_name = self.containers[container_type]
+            # Sanitize blob name for Azure compliance
+            original_blob_name = blob_name
+            blob_name = self._sanitize_blob_name(blob_name)
+            
+            logger.info(f"🔄 Uploading to Azure: container='{container_name}', blob='{blob_name}'")
+            if original_blob_name != blob_name:
+                logger.info(f"📝 Blob name sanitized: '{original_blob_name}' → '{blob_name}'")
             
             # Ensure container exists
             await self.ensure_containers_exist()
@@ -175,6 +192,8 @@ class AzureBlobStorageService:
         """
         try:
             container_name = self.containers[container_type]
+            # Sanitize blob name for Azure compliance
+            blob_name = self._sanitize_blob_name(blob_name)
             
             # Ensure container exists
             await self.ensure_containers_exist()
