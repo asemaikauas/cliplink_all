@@ -382,28 +382,29 @@ class YouTubeService:
     def _get_h264_quality_priorities(self, requested_quality: str) -> List[str]:
         """
         Get quality priorities optimized for H.264 downloads.
-        YouTube's AV1 usage varies by resolution, so we prioritize qualities most likely to be H.264.
+        Prioritizes the requested quality first, then falls back to lower qualities if needed.
         """
         # Quality preferences based on YouTube's typical codec distribution
         # 720p: ~90% H.264, 1080p: ~70% H.264, 1440p+: ~50% H.264
+        
         if requested_quality == "best":
-            # For "best", try 720p first (most likely H.264), then 1080p, then higher
-            return ["720p", "1080p", "1440p", "2160p"]
+            # For "best", try highest quality first, then fall back
+            return ["2160p", "1440p", "1080p", "720p"]
         elif requested_quality == "1080p":
-            # For 1080p, try 720p first (more likely H.264), then 1080p, then alternatives
-            return ["720p", "1080p", "1440p", "2160p"]
+            # For 1080p, try 1080p first, then fall back
+            return ["1080p", "720p", "1440p", "2160p"]
         elif requested_quality == "720p":
-            # 720p is already very likely to be H.264, but try others if needed
+            # For 720p, try 720p first, then alternatives
             return ["720p", "1080p", "1440p"]
         elif requested_quality in ["1440p", "2160p", "4k"]:
-            # Higher resolutions are more likely to be AV1, so try lower first
-            return ["1080p", "720p", "1440p", "2160p"]
+            # For high resolutions, try requested first, then fall back
+            return [requested_quality, "1080p", "720p", "1440p", "2160p"]
         elif requested_quality == "8k":
-            # 8K is almost always AV1, so prioritize lower resolutions
+            # 8K is almost always AV1, so try 4K first, then fall back
             return ["2160p", "1440p", "1080p", "720p"]
         else:
-            # Default fallback
-            return ["720p", "1080p", "1440p", "2160p"]
+            # Default: try requested quality first, then fall back
+            return [requested_quality, "1080p", "720p", "1440p", "2160p"]
     
     def _verify_video_codec(self, video_path: Path) -> Dict[str, str]:
         """Verify the codec of a downloaded video file"""
