@@ -201,17 +201,14 @@ async def _process_single_viral_segment_parallel(
             import asyncio
             
             try:
-                # Add timeout protection for vertical cropping (5 minutes max)
-                crop_result = await asyncio.wait_for(
-                    crop_video_to_vertical_async(
-                        input_path=temp_horizontal_clip_path,
-                        output_path=vertical_clip_path,
-                        use_speaker_detection=True,
-                        use_smart_scene_detection=False,  # 🚀 DISABLED for performance
-                        smoothing_strength=smoothing_strength,
-                        task_id=f"{task_id}_seg_{segment_index+1}" if task_id else None
-                    ),
-                    timeout=300.0  # 5 minutes timeout
+                # Vertical cropping without timeout - let it complete naturally
+                crop_result = await crop_video_to_vertical_async(
+                    input_path=temp_horizontal_clip_path,
+                    output_path=vertical_clip_path,
+                    use_speaker_detection=True,
+                    use_smart_scene_detection=False,  # 🚀 DISABLED for performance
+                    smoothing_strength=smoothing_strength,
+                    task_id=f"{task_id}_seg_{segment_index+1}" if task_id else None
                 )
                 
                 if not crop_result.get("success"):
@@ -223,13 +220,6 @@ async def _process_single_viral_segment_parallel(
                 # Clean up the temp horizontal clip now that we have the vertical one
                 if temp_horizontal_clip_path.exists():
                     temp_horizontal_clip_path.unlink()
-                    
-            except asyncio.TimeoutError:
-                print(f"   ❌ Vertical cropping timed out after 5 minutes.")
-                # Clean up any partial vertical crop file
-                if vertical_clip_path.exists():
-                    vertical_clip_path.unlink()
-                raise Exception("Vertical cropping timed out after 5 minutes")
                     
             except Exception as crop_error:
                 print(f"   ❌ Vertical cropping failed: {crop_error}")
