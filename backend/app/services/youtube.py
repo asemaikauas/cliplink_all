@@ -243,139 +243,46 @@ class YouTubeService:
 
     def download_with_apify(self, url: str, quality: str = "best") -> Path:
         """
-        Download video using Apify YouTube Video Downloader API with H.264-first strategy
-        
+        Download video using Apify YouTube Video Downloader API (always best quality, regardless of codec)
         Args:
             url: YouTube video URL
             quality: Quality setting (8k, 4k, 1440p, 1080p, 720p, best)
         """
         try:
-            # Get video info first (but don't download yet)
             print(f"📺 Getting video info for download...")
             basic_info = self._extract_video_id_from_url(url)
             video_id = basic_info['id']
-            
             print(f"🆔 Video ID: {video_id}")
-            print(f"🎯 H.264-First Strategy: Prioritizing H.264 downloads to avoid codec conversion")
-            
+            apify_resolution = self.quality_map.get(quality, "1080p")
+            print(f"🎯 Requesting resolution: {apify_resolution}")
             # Check if file already exists
-            existing_file = self._find_downloaded_file(video_id)
+            existing_file = self._find_downloaded_file(video_id, apify_resolution)
             if existing_file and existing_file.exists():
                 print(f"✅ File already exists: {existing_file.name}")
-                # Verify it's H.264, if not, we'll try to get a better version
-                codec_info = self._verify_video_codec(existing_file)
-                if codec_info.get('codec') in ['h264', 'avc1']:
-                    print(f"✅ Existing file is H.264 - using it!")
-                    return existing_file.absolute()
-                else:
-                    print(f"⚠️ Existing file is {codec_info.get('codec')} - will try to get H.264 version")
-            
-            # 🎯 H.264-FIRST STRATEGY: Try qualities most likely to be H.264 first
-            h264_priorities = self._get_h264_quality_priorities(quality)
-            print(f"🔍 H.264 quality priorities: {h264_priorities}")
-            
-            for attempt_quality in h264_priorities:
-                try:
-                    print(f"📥 Attempting {attempt_quality} (H.264 priority)...")
-                    
-                    # Check if this quality file already exists
-                    existing_alt = self._find_downloaded_file(video_id, attempt_quality)
-                    if existing_alt and existing_alt.exists():
-                        print(f"   ✅ Found existing {attempt_quality} file")
-                        codec_info = self._verify_video_codec(existing_alt)
-                        if codec_info.get('codec') in ['h264', 'avc1']:
-                            print(f"   🎯 Existing {attempt_quality} file is H.264 - using it!")
-                            return existing_alt.absolute()
-                        else:
-                            print(f"   ❌ Existing {attempt_quality} file is {codec_info.get('codec')} - skipping")
-                            continue
-                    
-                    # Try downloading this quality
-                    apify_resolution = self.quality_map.get(attempt_quality, attempt_quality)
-                    
-                    run_input = {
-                        "urls": [url],
-                        "resolution": apify_resolution,
-                        "max_concurrent": 1
-                    }
-                    
-                    print(f"   📥 Downloading {attempt_quality} via Apify...")
-                    run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
-                    dataset = self.client.dataset(run["defaultDatasetId"])
-                    results = dataset.list_items().items
-                    
-                    if not results or len(results) == 0:
-                        print(f"   ❌ No results for {attempt_quality}")
-                        continue
-                    
-                    video_data = results[0]
-                    download_url = video_data.get('download_url')
-                    title = video_data.get('title', 'Unknown Video')
-                    
-                    if not download_url:
-                        print(f"   ❌ No download URL for {attempt_quality}")
-                        continue
-                    
-                    print(f"   ✅ Got download URL for {attempt_quality}: {title}")
-                    
-                    # Download the video file
-                    downloaded_file = self._download_file_from_url(download_url, video_id, title, apify_resolution)
-                    
-                    # Verify it's H.264
-                    codec_info = self._verify_video_codec(downloaded_file)
-                    
-                    if codec_info.get('codec') in ['h264', 'avc1']:
-                        print(f"   🎯 {attempt_quality} is H.264 - success!")
-                        return downloaded_file
-                    else:
-                        print(f"   ❌ {attempt_quality} is {codec_info.get('codec')} - removing and trying next")
-                        if downloaded_file.exists():
-                            downloaded_file.unlink()
-                
-                except Exception as e:
-                    print(f"   ❌ Failed to try {attempt_quality}: {e}")
-                    continue
-            
-            # If we get here, we couldn't find H.264 in any quality
-            print(f"😞 No H.264 versions found - falling back to original quality with conversion")
-            
-            # Fall back to original strategy (download requested quality, convert if needed)
-            apify_resolution = self.quality_map.get(quality, "1080p")
-            print(f"📥 Downloading original quality {quality}...")
-            
+                return existing_file.absolute()
+            # Prepare Actor input
             run_input = {
                 "urls": [url],
                 "resolution": apify_resolution,
                 "max_concurrent": 1
             }
-            
+            print(f"📥 Starting download via Apify API...")
             run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
             dataset = self.client.dataset(run["defaultDatasetId"])
             results = dataset.list_items().items
-            
             if not results or len(results) == 0:
                 raise DownloadError("No download results returned from Apify")
-            
             video_data = results[0]
             download_url = video_data.get('download_url')
             title = video_data.get('title', 'Unknown Video')
-            
             if not download_url:
                 raise DownloadError("No download URL provided by Apify")
-            
             print(f"✅ Got download URL from Apify: {title}")
-            
             # Download the video file
             downloaded_file = self._download_file_from_url(download_url, video_id, title, apify_resolution)
-            
-            # Check codec and warn about conversion
             codec_info = self._verify_video_codec(downloaded_file)
-            if codec_info.get('codec') == 'av1':
-                print(f"⚠️ Downloaded video uses AV1 codec - will be converted to H.264 during processing")
-            
             print(f"✅ Download completed! Codec: {codec_info.get('codec', 'unknown')}")
             return downloaded_file
-            
         except Exception as e:
             raise DownloadError(f"Apify download failed: {str(e)}")
     
@@ -524,17 +431,18 @@ class YouTubeService:
 
 
 
-    def _find_downloaded_file(self, video_id: str) -> Optional[Path]:
+    def _find_downloaded_file(self, video_id: str, quality: Optional[str] = None) -> Optional[Path]:
         """
-        Find downloaded file by video ID
+        Find a previously downloaded file by video_id and (optionally) quality.
+        If quality is provided, look for files with that quality in the filename.
         """
-        possible_extensions = ['.mp4', '.webm', '.mkv', '.m4v', '.avi']
-        
-        for ext in possible_extensions:
-            pattern = f"*{video_id}*{ext}"
-            files = list(self.downloads_dir.glob(pattern))
-            if files:
-                return files[0]
+        for file in self.downloads_dir.glob("*.mp4"):
+            if video_id in file.name:
+                if quality:
+                    if quality in file.name:
+                        return file
+                else:
+                    return file
         return None
 
 youtube_service = YouTubeService()
