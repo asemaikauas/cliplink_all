@@ -884,12 +884,11 @@ class AsyncVerticalCropService:
             else:
                 logger.info(f"🔇 No audio data - using visual detection only")
 
-            # Use FFmpeg to extract frames for robust AV1 support
-            from app.services.youtube import extract_frames_with_ffmpeg
+            # Use OpenCV directly since conda-forge handles AV1 perfectly
             import cv2
+            import numpy as np
             frame_count = 0
             last_progress_update = 0
-            import numpy as np
 
             # Setup video writer for temp output
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -897,7 +896,17 @@ class AsyncVerticalCropService:
             if not out.isOpened():
                 raise Exception(f"Could not open video writer for: {temp_video_path} - no compatible codec found")
 
-            for frame in extract_frames_with_ffmpeg(str(input_video_path)):
+            # Use OpenCV VideoCapture directly (works great with conda-forge AV1 support)
+            cap = cv2.VideoCapture(str(input_video_path))
+            if not cap.isOpened():
+                raise Exception(f"Could not open video with OpenCV: {input_video_path}")
+            
+            logger.info(f"🎬 Using OpenCV VideoCapture for frame processing (AV1 native support)")
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
                 # SMART SCENE RESET LOGIC
                 should_reset = self._apply_smart_reset(
                     frame_count, scene_boundaries, scene_stats, 
@@ -969,6 +978,9 @@ class AsyncVerticalCropService:
                 frame_count += 1
                 if frame_count % (fps * 5) == 0:
                     logger.info(f"📊 Processed {frame_count} frames...")
+            
+            # Clean up video capture and writer
+            cap.release()
             out.release()
             logger.info(f"🎬 Frame processing complete. Proceeding to audio merging...")
             # --- AUDIO INTEGRATION STEP (unchanged) ---
