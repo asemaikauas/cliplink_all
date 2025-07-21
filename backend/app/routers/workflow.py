@@ -448,7 +448,7 @@ async def _process_video_workflow_async(
         _update_workflow_progress(task_id, "download", 10, f" Processing video in {quality} quality...")
         
         try:
-            video_path = await _run_blocking_task(download_video, youtube_url, quality)
+            video_path = await download_video(youtube_url, quality)
             file_size_mb = video_path.stat().st_size / (1024*1024)
             
             _update_workflow_progress(
@@ -770,7 +770,7 @@ async def _process_video_workflow_fast_async(
         _update_workflow_progress(task_id, "download", 20, f"Downloading video in {quality} quality...")
         
         try:
-            video_path = await _run_blocking_task(download_video, youtube_url, quality)
+            video_path = await download_video(youtube_url, quality)
             file_size_mb = video_path.stat().st_size / (1024*1024)
             
             _update_workflow_progress(

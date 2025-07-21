@@ -176,4 +176,17 @@ Make sure your `.env` file includes:
 APIFY_TOKEN=your-apify-api-token-here
 ```
 
-This complete solution eliminates both download reliability issues AND AV1 timeout problems! 
+This complete solution eliminates both download reliability issues AND AV1 timeout problems!
+
+### ✅ FIXED: Async Download Integration
+
+**Issue Resolved**: Fixed workflow integration to properly await the new async Apify download function.
+
+**Problem**: After switching to Apify async downloads, the workflow was still wrapping `download_video()` in `_run_blocking_task()`, causing it to return a coroutine object instead of a Path.
+
+**Solution**: Updated workflow to call `await download_video()` directly instead of `await _run_blocking_task(download_video, ...)`.
+
+**Files Fixed**:
+- `backend/app/routers/workflow.py` - Both comprehensive and fast workflows now properly await async downloads
+
+Your Apify + conda-forge system is now fully operational! 🚀 
