@@ -125,36 +125,55 @@ cmd = [
 
 Your system is already production-ready for AV1 videos!
 
-## ✅ IMPLEMENTED: conda-forge Native AV1 Support
+## ✅ IMPLEMENTED: Apify + conda-forge Solution
 
-**The conda-forge approach has been implemented in your Dockerfile!**
+**The complete solution has been implemented - Apify for downloads + conda-forge for native AV1 support!**
 
 ### What Changed:
 
-1. **Dockerfile Updated**: Now uses `continuumio/miniconda3:latest` base image
-2. **Native OpenCV**: Installs OpenCV from conda-forge with proper AV1 support
-3. **Smart Detection**: Updated `vertical_crop_async.py` to detect conda-forge AV1 support
-4. **Test Script**: Added `test_av1_support.py` to verify AV1 functionality
+1. **YouTube Downloads**: Now uses **ONLY Apify** (removed all yt-dlp code)
+2. **Native AV1 Support**: conda-forge OpenCV handles AV1 videos natively
+3. **Smart Detection**: Enhanced AV1 detection for conda-forge compatibility
+4. **Test Scripts**: Added comprehensive testing for both Apify and AV1 support
+
+### Architecture:
+
+```
+YouTube URL → Apify API → Download URL → Local File → conda-forge OpenCV → Direct AV1 Processing
+                                                                      ↓
+                                                          NO CONVERSION NEEDED!
+```
 
 ### Build and Test:
 
 ```bash
-# Build the new Docker image
-docker build -t cliplink-backend-conda .
+# Build the new Docker image with Apify + conda-forge
+docker build -t cliplink-backend-apify-conda backend/
 
-# Test AV1 support
-docker run -it cliplink-backend-conda python test_av1_support.py
+# Test Apify integration
+docker run -it cliplink-backend-apify-conda python test_apify_youtube.py
+
+# Test AV1 support  
+docker run -it cliplink-backend-apify-conda python test_av1_support.py
 
 # Test with actual AV1 video
-docker run -v /path/to/av1/video:/test_video -it cliplink-backend-conda \
+docker run -v /path/to/av1/video:/test_video -it cliplink-backend-apify-conda \
   python test_av1_support.py /test_video/av1_file.mp4
 ```
 
 ### Expected Results:
 
+- ✅ **Reliable downloads** via Apify cloud service (no yt-dlp issues)
 - ✅ **No more timeout issues** with AV1 videos
 - ✅ **Native AV1 decoding** without conversion delays  
-- ✅ **Fallback still works** if any issues occur
-- ✅ **Better performance** for AV1 content
+- ✅ **Production-ready** cloud-based download service
+- ✅ **Better performance** for all video formats
 
-This should solve your timeout problems completely! 
+### Environment Setup:
+
+Make sure your `.env` file includes:
+```bash
+APIFY_TOKEN=your-apify-api-token-here
+```
+
+This complete solution eliminates both download reliability issues AND AV1 timeout problems! 
