@@ -11,6 +11,7 @@ import asyncio
 from apify_client import ApifyClient
 from dotenv import load_dotenv
 import shutil
+import yt_dlp
 
 # Load environment variables
 load_dotenv()
@@ -207,85 +208,190 @@ class YouTubeService:
         except Exception as e:
             raise DownloadError(f"Failed to get available formats: {str(e)}")
 
-    def download_video(self, url: str, quality: str = "best") -> Path:
+    async def download_video(self, url: str, quality: str = "best") -> Path:
         """
-        Download a video with a specific quality setting using Apify API
+        Download YouTube video with automatic AV1 to H.264 conversion for processing compatibility
         """
         try:
-            if quality not in self.quality_map:
-                raise ValueError(f"Invalid quality setting: {quality}. Valid options are: {list(self.quality_map.keys())}")
+            logger.info(f"🎬 Starting download: {url} (quality: {quality})")
             
-            logger.info(f"🚀 Downloading video via Apify API in quality: '{quality}'")
-            return self.download_with_apify(url, quality)
-
-        except DownloadError as e:
-            # Check if the error is due to format unavailability
-            if "not available" in str(e).lower():
-                logger.warning(
-                    f"Requested quality '{quality}' not available for {url}. "
-                    f"Falling back to 'best' available quality."
-                )
-                # If the initial attempt was already 'best', don't retry, just re-raise
-                if quality == "best":
-                    raise e
-                
-                # Fallback to the 'best' quality setting
-                try:
-                    return self.download_with_apify(url, "best")
-                except DownloadError as fallback_e:
-                    logger.error(f"Fallback download attempt also failed: {fallback_e}")
-                    raise fallback_e
-            else:
-                # Re-raise other download errors not related to format
-                raise e
+            video_id_info = self._extract_video_id_from_url(url)
+            video_id = video_id_info["video_id"]
+            
+            # Check if already downloaded
+            existing_file = self._find_downloaded_file(video_id, quality)
+            if existing_file:
+                logger.info(f"✅ Using existing download: {existing_file}")
+                return existing_file
+            
+            # Configure yt-dlp options with H.264 priority
+            format_selector = self._get_h264_quality_priorities(quality)
+            
+            ydl_opts = {
+                'format': format_selector,
+                'outtmpl': os.path.join(self.downloads_dir, f'{video_id}_%(height)sp_%(vcodec)s.%(ext)s'),
+                'noplaylist': True,
+                'extract_flat': False,
+                'writeinfojson': False,
+                'writesubtitles': False,
+                'writeautomaticsub': False,
+                'ignoreerrors': False,
+                'no_warnings': False,
+                'noprogress': True,
+                'quiet': False,
+                'verbose': False,
+            }
+            
+            # Download with yt-dlp
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            
+            # Find the downloaded file
+            downloaded_file = self._find_downloaded_file(video_id, quality)
+            if not downloaded_file:
+                raise DownloadError("Download completed but file not found")
+            
+            logger.info(f"📁 Downloaded: {downloaded_file}")
+            
+            # 🔧 PREPROCESSING: Check codec and convert AV1 to H.264 if needed
+            processed_file = await self._preprocess_video_for_compatibility(downloaded_file)
+            
+            return processed_file
+            
         except Exception as e:
-            logger.error(f"An unexpected error occurred during video download: {e}")
-            raise DownloadError(f"An unexpected error occurred: {e}")
+            logger.error(f"Download failed: {str(e)}")
+            if "Video unavailable" in str(e):
+                raise DownloadError(f"Video is unavailable or private: {url}")
+            elif "No video formats found" in str(e):
+                raise DownloadError(f"No downloadable video formats found for: {url}")
+            else:
+                raise DownloadError(f"Download failed: {str(e)}")
 
-    def download_with_apify(self, url: str, quality: str = "best") -> Path:
+    async def _preprocess_video_for_compatibility(self, video_path: Path) -> Path:
         """
-        Download video using Apify YouTube Video Downloader API (always best quality, regardless of codec)
-        Args:
-            url: YouTube video URL
-            quality: Quality setting (8k, 4k, 1440p, 1080p, 720p, best)
+        Preprocess video during download: convert AV1 to H.264 for fast processing
+        
+        Returns:
+            Path to processed video (original or converted H.264 version)
         """
         try:
-            print(f"📺 Getting video info for download...")
-            basic_info = self._extract_video_id_from_url(url)
-            video_id = basic_info['id']
-            print(f"🆔 Video ID: {video_id}")
-            apify_resolution = self.quality_map.get(quality, "1080p")
-            print(f"🎯 Requesting resolution: {apify_resolution}")
-            # Check if file already exists
-            existing_file = self._find_downloaded_file(video_id, apify_resolution)
-            if existing_file and existing_file.exists():
-                print(f"✅ File already exists: {existing_file.name}")
-                return existing_file.absolute()
-            # Prepare Actor input
-            run_input = {
-                "urls": [url],
-                "resolution": apify_resolution,
-                "max_concurrent": 1
-            }
-            print(f"📥 Starting download via Apify API...")
-            run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
-            dataset = self.client.dataset(run["defaultDatasetId"])
-            results = dataset.list_items().items
-            if not results or len(results) == 0:
-                raise DownloadError("No download results returned from Apify")
-            video_data = results[0]
-            download_url = video_data.get('download_url')
-            title = video_data.get('title', 'Unknown Video')
-            if not download_url:
-                raise DownloadError("No download URL provided by Apify")
-            print(f"✅ Got download URL from Apify: {title}")
-            # Download the video file
-            downloaded_file = self._download_file_from_url(download_url, video_id, title, apify_resolution)
-            codec_info = self._verify_video_codec(downloaded_file)
-            print(f"✅ Download completed! Codec: {codec_info.get('codec', 'unknown')}")
-            return downloaded_file
+            # Detect video codec
+            codec_info = self._verify_video_codec(video_path)
+            video_codec = codec_info.get("video_codec", "").lower()
+            
+            logger.info(f"🎬 Detected codec: {video_codec}")
+            
+            # If it's already H.264, no conversion needed
+            if video_codec in ["h264", "avc1"]:
+                logger.info(f"✅ Video is already H.264 - no conversion needed")
+                return video_path
+            
+            # If it's AV1, convert to H.264 during download (user expects to wait)
+            if video_codec == "av1":
+                logger.info(f"🔄 AV1 detected - converting to H.264 for fast processing...")
+                h264_path = await self._convert_av1_to_h264_async(video_path)
+                
+                if h264_path and h264_path.exists() and h264_path != video_path:
+                    # Verify the conversion worked
+                    h264_codec_info = self._verify_video_codec(h264_path)
+                    if h264_codec_info.get("video_codec", "").lower() in ["h264", "avc1"]:
+                        logger.info(f"✅ H.264 conversion successful: {h264_path}")
+                        
+                        # Keep both files for now (original + H.264 version)
+                        # Could optionally remove original AV1 file to save space
+                        return h264_path
+                    else:
+                        logger.warning(f"⚠️ H.264 conversion verification failed - using original")
+                        if h264_path.exists():
+                            h264_path.unlink()  # Clean up failed conversion
+                        return video_path
+                else:
+                    logger.warning(f"⚠️ H.264 conversion failed - using original AV1 video")
+                    return video_path
+            
+            # For other codecs (H.265, VP9, etc.), use original
+            logger.info(f"ℹ️ Using original video with {video_codec} codec")
+            return video_path
+            
         except Exception as e:
-            raise DownloadError(f"Apify download failed: {str(e)}")
+            logger.error(f"❌ Preprocessing failed: {e}")
+            logger.info(f"📁 Using original video: {video_path}")
+            return video_path
+
+    async def _convert_av1_to_h264_async(self, input_path: Path) -> Path:
+        """
+        Convert AV1 video to H.264 asynchronously during download
+        Uses balanced settings (faster than processing-time conversion)
+        """
+        try:
+            # Create H.264 version filename
+            h264_filename = input_path.stem + "_h264" + input_path.suffix
+            h264_path = input_path.parent / h264_filename
+            
+            logger.info(f"🔄 Converting AV1 to H.264 (download preprocessing)...")
+            logger.info(f"   📁 Input: {input_path.name}")
+            logger.info(f"   📁 Output: {h264_path.name}")
+            
+            # Use balanced settings: faster than high-quality but better than ultrafast
+            cmd = [
+                'ffmpeg', '-hide_banner', '-loglevel', 'error',
+                '-i', str(input_path),
+                '-c:v', 'libx264',
+                '-preset', 'medium',    # Balanced speed/quality for preprocessing
+                '-crf', '25',           # Good quality for processing
+                '-c:a', 'copy',         # Copy audio without re-encoding
+                '-movflags', '+faststart',
+                '-avoid_negative_ts', 'make_zero',
+                '-threads', '0',        # Use all CPU cores
+                str(h264_path),
+                '-y'
+            ]
+            
+            # Allow longer timeout during download (user expects to wait)
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Wait for conversion (allow up to 10 minutes during download)
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=600.0  # 10 minutes timeout during download
+                )
+                
+                if process.returncode == 0 and h264_path.exists():
+                    file_size = h264_path.stat().st_size / (1024 * 1024)  # MB
+                    logger.info(f"✅ H.264 preprocessing completed ({file_size:.1f} MB)")
+                    return h264_path
+                else:
+                    error_msg = stderr.decode() if stderr else "Unknown FFmpeg error"
+                    logger.error(f"❌ H.264 preprocessing failed: {error_msg}")
+                    
+                    # Clean up failed file
+                    if h264_path.exists():
+                        h264_path.unlink()
+                    return input_path
+                    
+            except asyncio.TimeoutError:
+                logger.error(f"❌ H.264 preprocessing timed out (10 minutes)")
+                logger.warning(f"⚠️ Using original AV1 video - processing may be slower")
+                
+                # Try to kill the process and clean up
+                try:
+                    process.kill()
+                    await process.wait()
+                except:
+                    pass
+                    
+                if h264_path.exists():
+                    h264_path.unlink()
+                return input_path
+                
+        except Exception as e:
+            logger.error(f"❌ H.264 preprocessing exception: {e}")
+            return input_path
     
     def _get_h264_quality_priorities(self, requested_quality: str) -> List[str]:
         """
@@ -454,12 +560,12 @@ def get_video_id(url: str) -> str:
     info = youtube_service.get_video_info(url)
     return info['id']
 
-def download_video(url: str, quality: str = "best") -> Path:
+async def download_video(url: str, quality: str = "best") -> Path:
     """
     Download video with specified quality
     Supported qualities: best, 8k, 4k, 1440p, 1080p, 720p
     """
-    return youtube_service.download_video(url, quality)
+    return await youtube_service.download_video(url, quality)
 
 def get_video_info(url: str) -> Dict:
     """Get detailed video information"""

@@ -1,12 +1,12 @@
-# FastAPI Backend Dockerfile
-FROM python:3.12-slim
+# FastAPI Backend Dockerfile with conda-forge OpenCV for native AV1 support
+FROM continuumio/miniconda3:latest
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Install system dependencies including build tools for Python packages
+# Install system dependencies (keeping essential ones)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libdav1d6 \
@@ -22,10 +22,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     gcc \
-    python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser
@@ -33,10 +31,19 @@ RUN useradd -m -u 1000 appuser
 # Set work directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Update conda and install OpenCV with native AV1 support from conda-forge
+RUN conda update -n base -c conda-forge conda && \
+    conda install -c conda-forge python=3.12 opencv libopencv py-opencv && \
+    conda clean -afy
+
+# Copy requirements (excluding opencv-python since we installed it via conda)
 COPY requirements.txt ./
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+
+# Install remaining Python dependencies via pip (excluding opencv packages)
+RUN sed '/opencv-python/d' requirements.txt > requirements_no_opencv.txt && \
+    pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements_no_opencv.txt && \
+    rm requirements_no_opencv.txt
 
 # Copy application code (excluding files listed in .dockerignore)
 COPY app/ ./app/

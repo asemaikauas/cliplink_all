@@ -113,7 +113,7 @@ async def download_youtube_video(
         # Download the video
         try:
             logger.info(f"📥 Starting download with quality: {quality}")
-            video_path = download_video(url, quality)
+            video_path = await download_video(url, quality)
             
             if not video_path or not video_path.exists():
                 raise HTTPException(

@@ -432,7 +432,8 @@ class AsyncVerticalCropService:
     
     async def _detect_and_convert_av1_if_needed(self, video_path: Path) -> Path:
         """
-        Detect AV1 codec issues and convert to H.264 if needed
+        Detect AV1 codec and check if conversion is needed
+        With conda-forge OpenCV, AV1 should work natively
         
         Returns:
             Path to usable video file (original or converted)
@@ -452,6 +453,7 @@ class AsyncVerticalCropService:
             
             stdout, stderr = await process.communicate()
             
+            codec_name = "unknown"
             if process.returncode == 0:
                 try:
                     data = json.loads(stdout.decode())
@@ -462,16 +464,19 @@ class AsyncVerticalCropService:
                         
                         # Check if it's AV1
                         if codec_name == 'av1':
-                            logger.warning(f"⚠️ AV1 codec detected - this may cause decoding issues")
+                            logger.info(f"🎬 AV1 codec detected - testing conda-forge OpenCV compatibility...")
                 except json.JSONDecodeError:
                     logger.warning(f"⚠️ Could not parse codec information")
             
             # Test if OpenCV can actually read frames from this video
-            logger.info(f"🔍 Testing OpenCV compatibility...")
+            logger.info(f"🔍 Testing OpenCV compatibility with {codec_name} codec...")
             cap = cv2.VideoCapture(str(video_path))
             
             if not cap.isOpened():
-                logger.error(f"❌ OpenCV cannot open video file")
+                if codec_name == 'av1':
+                    logger.error(f"❌ conda-forge OpenCV cannot open AV1 video file - this is unexpected!")
+                else:
+                    logger.error(f"❌ OpenCV cannot open {codec_name} video file")
                 cap.release()
                 return await self._convert_to_h264(video_path)
             
@@ -494,13 +499,22 @@ class AsyncVerticalCropService:
             success_rate = successful_reads / frames_tested if frames_tested > 0 else 0
             
             if successful_reads == 0:
-                logger.error(f"❌ OpenCV cannot read any frames from video - converting to H.264")
+                if codec_name == 'av1':
+                    logger.error(f"❌ conda-forge OpenCV cannot decode AV1 frames - fallback to H.264 conversion")
+                else:
+                    logger.error(f"❌ OpenCV cannot read any {codec_name} frames - converting to H.264")
                 return await self._convert_to_h264(video_path)
             elif success_rate < 0.5:
-                logger.warning(f"⚠️ Low frame read success rate ({success_rate:.1%}) - converting to H.264")
+                if codec_name == 'av1':
+                    logger.warning(f"⚠️ conda-forge OpenCV AV1 decode success rate too low ({success_rate:.1%}) - converting to H.264")
+                else:
+                    logger.warning(f"⚠️ Low {codec_name} frame read success rate ({success_rate:.1%}) - converting to H.264")
                 return await self._convert_to_h264(video_path)
             else:
-                logger.info(f"✅ OpenCV can read video properly ({success_rate:.1%} success rate)")
+                if codec_name == 'av1':
+                    logger.info(f"✅ conda-forge OpenCV handling AV1 natively! ({success_rate:.1%} success rate)")
+                else:
+                    logger.info(f"✅ OpenCV can read {codec_name} video properly ({success_rate:.1%} success rate)")
                 return video_path
                 
         except Exception as e:
@@ -536,10 +550,14 @@ class AsyncVerticalCropService:
                 '-i', str(input_path),
                 '-c:v', 'libx264',
                 '-preset', 'fast',  # Good balance of speed/quality
+                # TODO: For faster AV1 conversion, could use 'ultrafast' preset and CRF 28
+                # '-preset', 'ultrafast',  # Fastest encoding
+                # '-crf', '28',           # Slightly lower quality for speed
                 '-crf', '23',       # Good quality
                 '-c:a', 'copy',     # Copy audio without re-encoding
                 '-movflags', '+faststart',
                 '-avoid_negative_ts', 'make_zero',
+                '-threads', '0',    # Use all available CPU cores
                 str(temp_path),
                 '-y'
             ]
