@@ -268,7 +268,8 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
         localStorage.removeItem('cliplink_clips'); // Remove old format if it exists
 
         try {
-            // Start the comprehensive video processing
+            // Start the comprehensive video processing with H.264-first strategy
+            // Using 720p quality which is ~90% likely to be H.264, avoiding AV1 conversion issues
             const response = await fetch(apiUrl('/api/workflow/process-comprehensive-async'), {
                 method: 'POST',
                 headers: {
@@ -276,7 +277,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 },
                 body: JSON.stringify({
                     youtube_url: youtubeUrl.trim(),
-                    quality: 'best',
+                    quality: '720p',
                     create_vertical: true,
                     smoothing_strength: 'very_high',
                     burn_subtitles: true,
@@ -578,6 +579,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Generate Clips from YouTube Video
                 </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                    🎯 Optimized for H.264: Using 720p quality to avoid AV1 codec conversion issues and ensure faster processing.
+                </p>
 
                 <div className="flex gap-4">
                     <input
