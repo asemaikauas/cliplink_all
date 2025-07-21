@@ -15,6 +15,7 @@ import contextlib
 from pydub import AudioSegment
 from moviepy import VideoFileClip, AudioFileClip
 import subprocess
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -335,45 +336,45 @@ class VerticalCropService:
     ) -> bool:
         """
         Create a vertically cropped version of the video
-        
-        Args:
-            input_video_path: Path to input video
-            output_video_path: Path to save cropped video
-            use_speaker_detection: Whether to use speaker detection for smart cropping
-            smoothing_strength: Motion smoothing level ("low", "medium", "high", "very_high")
         """
         try:
+            from app.services.youtube import extract_frames_with_ffmpeg
             # Ensure output directory exists
             output_video_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Open video early to get properties
-            cap = cv2.VideoCapture(str(input_video_path))
-            if not cap.isOpened():
-                logger.error(f"Could not open video: {input_video_path}")
-                return False
-            
-            original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap.release() # Release now, will be reopened for processing
+
+            # Open video early to get properties (use FFmpeg for frame extraction)
+            import cv2
+            import numpy as np
+            import os
+            # Use FFmpeg to get video properties
+            import subprocess
+            import json
+            probe_cmd = [
+                'ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                'stream=width,height,r_frame_rate,nb_frames', '-of', 'json', str(input_video_path)
+            ]
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            probe_data = json.loads(probe_result.stdout)
+            stream = probe_data['streams'][0]
+            original_width = int(stream['width'])
+            original_height = int(stream['height'])
+            fps = int(eval(stream['r_frame_rate']))
+            total_frames = int(stream.get('nb_frames', 0))
 
             # Calculate 9:16 width based on original height
             target_height = original_height
             target_width = int(original_height * (9 / 16))
-            # Ensure width is even for compatibility
             if target_width % 2 != 0:
                 target_width += 1
             target_size = (target_width, target_height)
 
-            # 🎛️ КОНФИГУРАЦИЯ СГЛАЖИВАНИЯ
+            # Smoothing config (unchanged)
             smoothing_configs = {
                 "low": {"smoothing_factor": 0.3, "max_jump_distance": 80, "stability_frames": 3},
                 "medium": {"smoothing_factor": 0.75, "max_jump_distance": 50, "stability_frames": 5},
                 "high": {"smoothing_factor": 0.9, "max_jump_distance": 25, "stability_frames": 8},
                 "very_high": {"smoothing_factor": 0.95, "max_jump_distance": 15, "stability_frames": 12}
             }
-            
             if smoothing_strength in smoothing_configs:
                 config = smoothing_configs[smoothing_strength]
                 self.smoothing_factor = config["smoothing_factor"]
@@ -387,76 +388,33 @@ class VerticalCropService:
                 self.smoothing_factor = config["smoothing_factor"]
                 self.max_jump_distance = config["max_jump_distance"]
                 self.stability_frames = config["stability_frames"]
-            
+
             logger.info(f"🎬 Creating STABILIZED vertical crop: {target_size[0]}x{target_size[1]}")
-            
-            # 🎯 СБРАСЫВАЕМ СОСТОЯНИЕ СТАБИЛИЗАЦИИ ДЛЯ НОВОГО ВИДЕО
             self.previous_crop_center = None
             self.recent_centers = []
-            
+
             # Extract audio for voice activity detection
             audio_data = None
             if use_speaker_detection and self.vad:
                 audio_data = self.extract_audio_for_vad(input_video_path)
                 logger.info("🔊 Audio extracted for voice activity detection")
-            
-            # Open video for processing
-            cap = cv2.VideoCapture(str(input_video_path))
-            if not cap.isOpened():
-                logger.error(f"Could not open video: {input_video_path}")
-                return False
-            
+
             # Setup video writer for a temporary, silent video file
             temp_video_path = output_video_path.with_name(f"{output_video_path.stem}_temp.mp4")
-            
-            # Try multiple codecs for better compatibility
-            codecs_to_try = [
-                ('mp4v', 'MPEG-4'),
-                ('XVID', 'Xvid'),
-                ('avc1', 'H.264/AVC'),
-                ('H264', 'H.264'),
-                ('X264', 'x264')
-            ]
-            
-            out = None
-            used_codec = None
-            
-            for fourcc_str, codec_name in codecs_to_try:
-                try:
-                    fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
-                    temp_out = cv2.VideoWriter(str(temp_video_path), fourcc, fps, target_size)
-                    
-                    # Test if the writer was created successfully
-                    if temp_out.isOpened():
-                        out = temp_out
-                        used_codec = codec_name
-                        logger.info(f"✅ Successfully created video writer with {codec_name} codec")
-                        break
-                    else:
-                        temp_out.release()
-                        logger.warning(f"⚠️ Failed to create video writer with {codec_name} codec")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error with {codec_name} codec: {e}")
-                    continue
-            
-            if out is None or not out.isOpened():
-                logger.error("❌ Could not create video writer with any available codec")
-                cap.release()
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(str(temp_video_path), fourcc, fps, target_size)
+            if not out.isOpened():
+                logger.error("❌ Could not create video writer")
                 return False
-            
+
             # Setup audio processing
             audio_generator = None
             if audio_data:
                 audio_generator = self.process_audio_frames(audio_data)
-            
+
             frame_count = 0
-            logger.info(f"📹 Processing {total_frames} frames with STABILIZATION...")
-            
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
+            logger.info(f"📹 Processing frames with FFmpeg extraction...")
+            for frame in extract_frames_with_ffmpeg(str(input_video_path)):
                 # Get audio frame for VAD
                 audio_frame = None
                 if audio_generator:
@@ -464,95 +422,67 @@ class VerticalCropService:
                         audio_frame = next(audio_generator)
                     except StopIteration:
                         audio_frame = None
-                
                 # Find active speaker
                 speaker_box = None
                 if use_speaker_detection:
                     speaker_box = self.find_active_speaker(frame, audio_frame)
-                
                 # Crop to vertical format with smoothing
                 cropped_frame = self.crop_to_vertical(
                     frame, 
                     speaker_box, 
                     target_size,
-                    use_smoothing=True  # 🎯 ВКЛЮЧАЕМ СГЛАЖИВАНИЕ
+                    use_smoothing=True
                 )
-                
-                # Write frame
                 out.write(cropped_frame)
-                
                 frame_count += 1
-                if frame_count % (fps * 5) == 0:  # Progress every 5 seconds
-                    progress = (frame_count / total_frames) * 100
-                    logger.info(f"📊 Stabilized progress: {progress:.1f}% ({frame_count}/{total_frames})")
-            
-            cap.release()
+                if frame_count % (fps * 5) == 0:
+                    logger.info(f"📊 Stabilized progress: {frame_count} frames processed")
             out.release()
-            
             logger.info("🎬 Silent vertical video created. Now adding audio via remuxing...")
-
-            # --- AUDIO INTEGRATION STEP (Fast Remuxing) ---
+            # --- AUDIO INTEGRATION STEP (unchanged) ---
             try:
-                # First, check if the original video has an audio track
+                from moviepy import VideoFileClip
+                if not temp_video_path.exists():
+                    logger.error(f"Temp video not found: {temp_video_path}")
+                    return False
                 with VideoFileClip(str(input_video_path)) as original_clip:
                     if original_clip.audio is None:
                         logger.warning("⚠️ Original video has no audio. The output will be silent.")
-                        # If no audio, just rename the temp file to the final output
                         temp_video_path.rename(output_video_path)
                         return True
-
-                # Use ffmpeg to copy streams without re-encoding (remuxing)
-                # This is extremely fast and preserves 100% of the quality
                 cmd = [
                     'ffmpeg',
                     '-hide_banner', '-loglevel', 'error',
-                    '-i', str(temp_video_path),      # Input 0: our new silent vertical video
-                    '-i', str(input_video_path),     # Input 1: the original video (for its audio)
-                    '-c:v', 'copy',                  # Copy the video stream as is
-                    '-c:a', 'copy',                  # Copy the audio stream as is
-                    '-map', '0:v:0',                 # Map video from input 0
-                    '-map', '1:a:0',                 # Map audio from input 1
-                    '-shortest',                     # Finish when the shortest stream ends
+                    '-i', str(temp_video_path),
+                    '-i', str(input_video_path),
+                    '-c:v', 'copy',
+                    '-c:a', 'copy',
+                    '-map', '0:v:0',
+                    '-map', '1:a:0',
+                    '-shortest',
                     str(output_video_path),
-                    '-y'                             # Overwrite output file if it exists
+                    '-y'
                 ]
-
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-
                 if result.returncode == 0:
                     logger.info(f"✅ Audio successfully merged! Final video: {output_video_path}")
-                    # Clean up the temporary silent video file
                     if temp_video_path.exists():
                         os.remove(temp_video_path)
                     return True
                 else:
-                    # If ffmpeg fails, log the error and fallback to the silent video
                     logger.error(f"❌ Failed to merge audio with ffmpeg: {result.stderr.strip()}")
                     if temp_video_path.exists():
                         temp_video_path.rename(output_video_path)
                         logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
                     return False
-
             except Exception as e:
                 logger.error(f"❌ An unexpected error occurred during audio merging: {e}")
-                # If audio fails, provide the silent video as a fallback
                 if temp_video_path.exists():
                     temp_video_path.rename(output_video_path)
                     logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
                 return False
-            
         except Exception as e:
             logger.error(f"❌ Vertical crop failed: {str(e)}")
-            # Cleanup resources on failure
-            if 'cap' in locals():
-                cap.release()
-            if 'out' in locals() and out is not None:
-                out.release()
-            if 'temp_video_path' in locals() and temp_video_path.exists():
-                try:
-                    os.remove(temp_video_path)
-                except:
-                    pass  # Ignore cleanup errors
             return False
 
 # Global service instance

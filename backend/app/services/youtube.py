@@ -10,6 +10,7 @@ from moviepy import VideoFileClip
 import asyncio
 from apify_client import ApifyClient
 from dotenv import load_dotenv
+import shutil
 
 # Load environment variables
 load_dotenv()
@@ -933,3 +934,34 @@ async def cut_clips_vertical_async(video_path: Path, analysis: Dict, smoothing_s
     except Exception as e:
         print(f"❌ Критическая ошибка при асинхронной обрезке: {str(e)}")
         return [] 
+
+def extract_frames_with_ffmpeg(video_path: str, output_dir: str = "frames", cleanup: bool = True):
+    """
+    Extract frames from a video using FFmpeg (as PNGs), yield them as OpenCV images.
+    Cleans up the frames after processing if cleanup=True.
+    """
+    import cv2
+    import glob
+    import os
+    import subprocess
+
+    # Ensure output directory exists and is empty
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Extract frames as PNGs
+    ffmpeg_cmd = [
+        'ffmpeg', '-i', str(video_path), f'{output_dir}/frame_%06d.png', '-hide_banner', '-loglevel', 'error'
+    ]
+    subprocess.run(ffmpeg_cmd, check=True)
+
+    # Yield frames as OpenCV images
+    frame_files = sorted(glob.glob(f'{output_dir}/frame_*.png'))
+    for frame_file in frame_files:
+        frame = cv2.imread(frame_file)
+        yield frame
+
+    # Cleanup
+    if cleanup:
+        shutil.rmtree(output_dir) 

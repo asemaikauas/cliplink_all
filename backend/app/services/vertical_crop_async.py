@@ -841,28 +841,23 @@ class AsyncVerticalCropService:
             logger.info(f"   📊 Resolution: {target_size}")
             logger.info(f"   🎬 Scene boundaries: {len(scene_data.get('scene_boundaries', set()))}")
             logger.info(f"   🎛️ Total frames to process: {total_frames}")
-            
+
             # Setup temp video path
             temp_video_path = output_video_path.with_name(f"{output_video_path.stem}_temp_{task_id}.mp4")
-            
-            # Ensure output directory exists
             temp_video_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Extract scene information
             scene_boundaries = scene_data.get("scene_boundaries", set())
             scene_stats = scene_data.get("scene_stats", [])
-            
-            # Video processing state
+
             previous_crop_center = None
             recent_centers = []
             smart_resets = 0
-            
-            # 🔧 ANTI-TWITCH: Prevent rapid mode switching
-            last_dual_speaker_frame = -999  # Track when we last used dual speaker mode
-            dual_speaker_stability_threshold = fps // 6  # Require 1/6 second between mode switches
-            
+            last_dual_speaker_frame = -999
+            dual_speaker_stability_threshold = fps // 6
+
             logger.info(f"🎬 Starting smart processing with {len(scene_boundaries)} scene boundaries")
-            
+
             # Setup audio generator
             audio_generator = None
             if audio_data:
@@ -870,74 +865,31 @@ class AsyncVerticalCropService:
                 audio_generator = self._process_audio_frames(audio_data)
             else:
                 logger.info(f"🔇 No audio data - using visual detection only")
-            
-            # Open video
-            logger.info(f"📹 Opening video file...")
-            cap = cv2.VideoCapture(str(input_video_path))
-            if not cap.isOpened():
-                raise Exception(f"Could not open video file: {input_video_path}")
-            
-            logger.info(f"📹 Video opened successfully, setting up output writer...")
-            
-            # Try multiple codecs for better compatibility
-            codecs_to_try = [
-                ('mp4v', 'MPEG-4'),
-                ('XVID', 'Xvid'),
-                ('avc1', 'H.264/AVC'),
-                ('H264', 'H.264'),
-                ('X264', 'x264')
-            ]
-            
-            out = None
-            used_codec = None
-            
-            for fourcc_str, codec_name in codecs_to_try:
-                try:
-                    fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
-                    temp_out = cv2.VideoWriter(str(temp_video_path), fourcc, fps, target_size)
-            
-                    # Test if the writer was created successfully
-                    if temp_out.isOpened():
-                        out = temp_out
-                        used_codec = codec_name
-                        logger.info(f"✅ Successfully created video writer with {codec_name} codec")
-                        break
-                    else:
-                        temp_out.release()
-                        logger.warning(f"⚠️ Failed to create video writer with {codec_name} codec")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error with {codec_name} codec: {e}")
-                    continue
-            
-            if out is None or not out.isOpened():
-                cap.release()
-                raise Exception(f"Could not open video writer for: {temp_video_path} - no compatible codec found")
-            
-            logger.info(f"📹 Video writer ready, starting frame-by-frame processing...")
-            
+
+            # Use FFmpeg to extract frames for robust AV1 support
+            from app.services.youtube import extract_frames_with_ffmpeg
+            import cv2
             frame_count = 0
             last_progress_update = 0
-            
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    logger.info(f"📹 Reached end of video at frame {frame_count}")
-                    break
-                
-                # 🎬 SMART SCENE RESET LOGIC - Check if we should reset at this frame
+            import numpy as np
+
+            # Setup video writer for temp output
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(str(temp_video_path), fourcc, fps, target_size)
+            if not out.isOpened():
+                raise Exception(f"Could not open video writer for: {temp_video_path} - no compatible codec found")
+
+            for frame in extract_frames_with_ffmpeg(str(input_video_path)):
+                # SMART SCENE RESET LOGIC
                 should_reset = self._apply_smart_reset(
                     frame_count, scene_boundaries, scene_stats, 
                     ignore_micro_cuts, micro_cut_threshold
                 )
-                
                 if should_reset:
-                    # Hard cut → immediate reset (as described by user)
                     smart_resets += 1
-                    recent_centers.clear()  # Clear smoothing history
-                    previous_crop_center = None  # Reset position tracking
+                    recent_centers.clear()
+                    previous_crop_center = None
                     logger.info(f"🎬 Smart reset #{smart_resets} at frame {frame_count} - fresh start")
-                    
-                    # Update progress with reset info
                     if frame_count - last_progress_update >= (fps * 2):
                         progress = 20 + int((frame_count / total_frames) * 60)
                         self._update_task_status(
@@ -945,7 +897,6 @@ class AsyncVerticalCropService:
                             f"🎬 Smart reset #{smart_resets} at frame {frame_count} - refocusing"
                         )
                         last_progress_update = frame_count
-                
                 # Get audio frame
                 audio_frame = None
                 if audio_generator:
@@ -953,145 +904,100 @@ class AsyncVerticalCropService:
                         audio_frame = next(audio_generator)
                     except StopIteration:
                         audio_frame = None
-                
-                # 👥 SMART SPEAKER DETECTION - Single or Dual Mode
+                # SMART SPEAKER DETECTION
                 speaker_result = None
                 if use_speaker_detection:
                     speaker_result = await self.find_active_speaker(
                         frame, audio_frame, previous_crop_center, enable_group_conversation_framing
                     )
-                
-                # 🔧 ANTI-TWITCH: Check if we should use dual speaker mode (prevent rapid switching)
                 can_use_dual_speaker = (
                     speaker_result and 
                     isinstance(speaker_result, dict) and 
                     speaker_result.get("mode") == "dual_speaker" and
                     (frame_count - last_dual_speaker_frame) >= dual_speaker_stability_threshold
                 )
-                
-                # Handle different speaker detection results
                 if can_use_dual_speaker:
-                    # 👥 DUAL SPEAKER MODE: Create split-screen layout
-                    last_dual_speaker_frame = frame_count  # Update last usage
+                    last_dual_speaker_frame = frame_count
                     cropped_frame = await self.create_dual_speaker_frame(
                         frame, 
                         speaker_result["speaker_1"], 
                         speaker_result["speaker_2"], 
                         target_size
                     )
-                    
-                    # 🔧 SIMPLE FIX: Don't jump to center, preserve previous position to avoid twitches
                     h, w = frame.shape[:2]
                     if previous_crop_center is None:
-                        # 🔧 CONSISTENT FALLBACK: Use right side when no previous position (same as single-speaker fallback)
                         previous_crop_center = (int(w * 0.75), h // 2)
                         recent_centers = [(int(w * 0.75), h // 2)]
-                    # Otherwise keep the existing previous_crop_center to avoid jarring jumps
-                    
                 else:
-                    # 🎯 SINGLE SPEAKER MODE: Traditional smart cropping with smoothing
                     speaker_box = speaker_result if isinstance(speaker_result, tuple) else None
-                    
-                    # Calculate crop center
                     if speaker_box:
                         x, y, x1, y1 = speaker_box
                         raw_center = ((x + x1) // 2, (y + y1) // 2)
                     else:
-                        # 🔧 FALLBACK: Use right side instead of center when no person detected
                         h, w = frame.shape[:2]
-                        raw_center = (int(w * 0.75), h // 2)  # 75% to the right, vertically centered
-                    
-                    # Apply smoothing logic based on reset state
+                        raw_center = (int(w * 0.75), h // 2)
                     if should_reset:
-                        # Immediate snap to raw center (no smoothing on reset)
                         crop_center = raw_center
-                        recent_centers = [raw_center]  # Start fresh history
+                        recent_centers = [raw_center]
                     else:
-                        # Normal smoothing (continuous in stable scenes)
                         crop_center, recent_centers = self._smooth_crop_center(
                             raw_center, previous_crop_center, recent_centers, smoothing_config
                         )
-                    
                     previous_crop_center = crop_center
-                    
-                    # Crop frame using traditional method
                     cropped_frame = await self.crop_frame_to_vertical(
                         frame, speaker_box, target_size, crop_center
                     )
-                
-                # Write frame
                 out.write(cropped_frame)
-                
                 frame_count += 1
-                
-                # Update progress (every 2 seconds to avoid spam)
-                if frame_count - last_progress_update >= (fps * 2):
-                    progress = 20 + int((frame_count / total_frames) * 60)  # 20-80% for video processing
-                    
-                    progress_msg = f"Smart processing: {frame_count}/{total_frames} ({progress-20:.1f}%)"
-                    if smart_resets > 0:
-                        progress_msg += f" - {smart_resets} smart resets"
-                    
-                    self._update_task_status(
-                        task_id, "processing", progress, progress_msg
-                    )
-                    last_progress_update = frame_count
-                    
-                    # Yield control to allow other tasks to run
-                    await asyncio.sleep(0)
-            
-            cap.release()
+                if frame_count % (fps * 5) == 0:
+                    logger.info(f"📊 Processed {frame_count} frames...")
             out.release()
-            
-            logger.info(f"🎬 Smart processing complete: {frame_count} frames processed, {smart_resets} intelligent resets applied")
-            
-            # Add audio back
-            self._update_task_status(task_id, "processing", 85, "Adding audio to video...")
-            logger.info(f"🔊 Adding audio to final video...")
-            
-            success = await self._add_audio_to_video(temp_video_path, input_video_path, output_video_path)
-            
-            if success:
-                logger.info(f"✅ Audio successfully added to video")
-            else:
-                logger.warning(f"⚠️ Audio addition failed, but video processing completed")
-            
-            # Calculate file size
-            file_size_mb = 0
-            if output_video_path.exists():
-                file_size_mb = output_video_path.stat().st_size / (1024 * 1024)
-                logger.info(f"📁 Final video size: {file_size_mb:.2f} MB")
-            
-            # Cleanup temp file
-            if temp_video_path.exists():
-                os.remove(temp_video_path)
-                logger.info(f"🧹 Cleaned up temporary file")
-            
-            logger.info(f"🎉 Smart vertical crop completed successfully!")
-            
-            return {
-                "success": success,
-                "file_size_mb": round(file_size_mb, 2),
-                "frames_processed": frame_count,
-                "smart_resets": smart_resets
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Smart video processing error for task {task_id}: {e}")
-            logger.error(f"❌ Full error details: ", exc_info=True)
-            
-            # Cleanup resources on failure
+            logger.info(f"🎬 Frame processing complete. Proceeding to audio merging...")
+            # --- AUDIO INTEGRATION STEP (unchanged) ---
             try:
-                if 'cap' in locals() and cap is not None:
-                    cap.release()
-                if 'out' in locals() and out is not None:
-                    out.release()
-                if 'temp_video_path' in locals() and temp_video_path.exists():
-                    os.remove(temp_video_path)
-                    logger.info("🧹 Cleaned up temp file after error")
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Error during cleanup: {cleanup_error}")
-            
+                from moviepy import VideoFileClip
+                if not temp_video_path.exists():
+                    logger.error(f"Temp video not found: {temp_video_path}")
+                    return {"success": False, "error": "Temp video not found"}
+                with VideoFileClip(str(input_video_path)) as original_clip:
+                    if original_clip.audio is None:
+                        logger.warning("⚠️ Original video has no audio. The output will be silent.")
+                        temp_video_path.rename(output_video_path)
+                        return {"success": True, "output_path": str(output_video_path)}
+                cmd = [
+                    'ffmpeg',
+                    '-hide_banner', '-loglevel', 'error',
+                    '-i', str(temp_video_path),
+                    '-i', str(input_video_path),
+                    '-c:v', 'copy',
+                    '-c:a', 'copy',
+                    '-map', '0:v:0',
+                    '-map', '1:a:0',
+                    '-shortest',
+                    str(output_video_path),
+                    '-y'
+                ]
+                import subprocess
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                if result.returncode == 0:
+                    logger.info(f"✅ Audio successfully merged! Final video: {output_video_path}")
+                    if temp_video_path.exists():
+                        os.remove(temp_video_path)
+                    return {"success": True, "output_path": str(output_video_path)}
+                else:
+                    logger.error(f"❌ Failed to merge audio with ffmpeg: {result.stderr.strip()}")
+                    if temp_video_path.exists():
+                        temp_video_path.rename(output_video_path)
+                        logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
+                    return {"success": False, "error": "Failed to merge audio"}
+            except Exception as e:
+                logger.error(f"❌ An unexpected error occurred during audio merging: {e}")
+                if temp_video_path.exists():
+                    temp_video_path.rename(output_video_path)
+                    logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
+                return {"success": False, "error": str(e)}
+        except Exception as e:
+            logger.error(f"❌ Smart frame processing failed: {str(e)}")
             return {"success": False, "error": str(e)}
     
     async def _add_audio_to_video(self, temp_video_path: Path, input_video_path: Path, output_video_path: Path) -> bool:
@@ -1265,7 +1171,7 @@ class AsyncVerticalCropService:
             scene_stats = []
             
             if not scene_list:
-                logger.warning("🎬 No scenes detected - video might be very stable or detection failed")
+                logger.warning("�� No scenes detected - video might be very stable or detection failed")
                 video_manager.release()
                 return {
                     "scene_boundaries": set(),
