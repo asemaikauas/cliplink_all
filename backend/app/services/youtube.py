@@ -231,31 +231,30 @@ class YouTubeService:
             logger.info("🔄 Calling Apify YouTube Video Downloader...")
             run_input = {
                 "urls": [url],
-                "quality": apify_quality,
-                "downloadMode": "video"
+                "resolution": apify_quality,
+                "max_concurrent": 1
             }
             
             # Run the Apify Actor
             run = self.client.actor("xtech/youtube-video-downloader").call(run_input=run_input)
             
-            # Get results from the Actor run
-            results = []
-            for item in self.client.dataset(run["defaultDatasetId"]).iterate_items():
-                results.append(item)
+            # Get results from the dataset (working approach)
+            dataset = self.client.dataset(run["defaultDatasetId"])
+            results = dataset.list_items().items
             
-            if not results:
+            if not results or len(results) == 0:
                 raise DownloadError("No download results returned from Apify")
             
-            result = results[0]
+            video_data = results[0]
             
             # Check if download was successful
-            if not result.get("downloadUrl"):
-                error_msg = result.get("error", "Unknown error from Apify")
-                raise DownloadError(f"Apify download failed: {error_msg}")
+            download_url = video_data.get('download_url')
+            title = video_data.get('title', 'Unknown Video')
             
-            download_url = result["downloadUrl"]
-            title = result.get("title", "Unknown Title")
-            resolution = result.get("resolution", apify_quality)
+            if not download_url:
+                raise DownloadError("No download URL provided by Apify")
+            
+            resolution = apify_quality
             
             logger.info(f"📥 Got download URL from Apify. Title: {title}")
             logger.info(f"📊 Resolution: {resolution}")
