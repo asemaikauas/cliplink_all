@@ -529,13 +529,34 @@ class SegmentDownloadService:
         Calculate estimated bandwidth savings from segment-based downloading
         """
         total_segment_duration = sum(segment['end'] - segment['start'] for segment in viral_segments)
+        
+        # Handle cases where video_duration is None or 0
+        if not video_duration or video_duration <= 0:
+            # Fallback: estimate video duration from the maximum end time in segments
+            if viral_segments:
+                estimated_duration = max(segment.get('end', 0) for segment in viral_segments)
+                if estimated_duration > 0:
+                    video_duration = estimated_duration
+                else:
+                    # If we still can't get duration, assume segments cover 50% of total video
+                    video_duration = total_segment_duration * 2
+            else:
+                # No segments to estimate from, use total segment duration
+                video_duration = total_segment_duration
+            
+            print(f"⚠️  Video duration was None/0, estimated as {video_duration:.1f}s from segments")
+        
+        # Ensure we don't divide by zero
+        if video_duration <= 0:
+            video_duration = 1.0  # Minimum fallback
+        
         savings_percentage = ((video_duration - total_segment_duration) / video_duration) * 100
         
         return {
             "total_video_duration": video_duration,
             "total_segment_duration": total_segment_duration,
-            "bandwidth_savings_percentage": round(savings_percentage, 1),
-            "time_savings_estimate": round(video_duration - total_segment_duration, 1)
+            "bandwidth_savings_percentage": round(max(0, savings_percentage), 1),  # Ensure non-negative
+            "time_savings_estimate": round(max(0, video_duration - total_segment_duration), 1)
         }
 
 # Global service instance

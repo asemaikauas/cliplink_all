@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Depends, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from pathlib import Path
@@ -13,6 +13,8 @@ from datetime import datetime
 import threading
 import time
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
+import subprocess
 
 # Import our services
 from app.services.youtube import (
@@ -436,6 +438,11 @@ async def _process_video_workflow_async(
         video_info = await _run_blocking_task(get_video_info, youtube_url)
         video_duration = video_info.get('duration', 0)
         
+        # Handle case where video_duration is None
+        if video_duration is None:
+            video_duration = 0
+            print("⚠️  Video duration is None, will estimate from segments later")
+        
         _update_workflow_progress(
             task_id, "video_info", 15, 
             f"Video info retrieved: {video_info['title']} ({video_duration}s)", 
@@ -443,7 +450,7 @@ async def _process_video_workflow_async(
         )
         
         # STEP 2: Extract transcript FIRST (15-30%) - User requirement #1
-        _update_workflow_progress(task_id, "transcript", 15, "🎯 Step 1: Extracting transcript...")
+        _update_workflow_progress(task_id, "transcript", 15, "🎯 Analyzing video")
         video_id = video_info['id']
         
         raw_transcript_data = await _run_blocking_task(fetch_youtube_transcript, video_id)
@@ -459,7 +466,7 @@ async def _process_video_workflow_async(
         )
         
         # STEP 3: Gemini Analysis BEFORE downloads (30-45%) - User requirement #2
-        _update_workflow_progress(task_id, "analysis", 30, "🎯 Step 2: Gemini AI analysis (extracting timecodes)...")
+        _update_workflow_progress(task_id, "analysis", 30, "🎯 Selecting viral segments...")
         gemini_analysis = await analyze_transcript_with_gemini(transcript_result)
         
         if not gemini_analysis.get("gemini_analysis", {}).get("viral_segments"):
@@ -473,7 +480,7 @@ async def _process_video_workflow_async(
         )
         
         # STEP 4: Smart Download Strategy (45-65%) - User requirement #3
-        _update_workflow_progress(task_id, "smart_download", 45, "🎯 Step 3: Downloading only necessary parts...")
+        _update_workflow_progress(task_id, "smart_download", 45, "🎯 Processing video...")
         
         segment_download_service = await get_segment_download_service()
         savings_estimate = segment_download_service.estimate_bandwidth_savings(viral_segments, video_duration)
@@ -501,6 +508,20 @@ async def _process_video_workflow_async(
                 if segment_result.get("azure_temp_url"):
                     azure_temp_urls.append(segment_result["azure_temp_url"])
         
+        # If video_duration is still None or invalid, try to get it from the first segment
+        if not video_duration or video_duration <= 0:
+            if segment_files:
+                actual_duration = get_video_duration_with_ffprobe(str(segment_files[0]))
+                if actual_duration:
+                    # Estimate total video duration based on segment timestamps
+                    max_segment_end = max(segment.get('end', 0) for segment in viral_segments)
+                    if max_segment_end > actual_duration:
+                        video_duration = max_segment_end
+                        print(f"🔍 Estimated total video duration: {video_duration:.1f}s (from segment timestamps)")
+                    else:
+                        video_duration = actual_duration
+                        print(f"🔍 Got video duration from first segment: {video_duration:.1f}s")
+        
         total_size_mb = sum(seg.get("file_size_mb", 0) for seg in segment_results)
         
         _update_workflow_progress(
@@ -515,7 +536,7 @@ async def _process_video_workflow_async(
         )
         
         # STEP 5: Process segments (65-95%) - User requirements #4, #5, #6
-        _update_workflow_progress(task_id, "processing", 65, f"🎯 Step 4-6: Processing {len(segment_files)} segments...")
+        _update_workflow_progress(task_id, "processing", 65, f"🎯 Processing {len(segment_files)} segments...")
         
         processing_tasks = []
         for i, (segment_file, segment_data) in enumerate(zip(segment_files, viral_segments)):
@@ -941,6 +962,11 @@ async def _process_video_workflow_optimized_async(
         _update_workflow_progress(task_id, "video_info", 5, "Getting video information...")
         video_info = await _run_blocking_task(get_video_info, youtube_url)
         video_duration = video_info.get('duration', 0)
+        
+        # Handle case where video_duration is None
+        if video_duration is None:
+            video_duration = 0
+            print("⚠️  Video duration is None, will estimate from segments later")
         
         _update_workflow_progress(
             task_id, "video_info", 15, 
@@ -2183,3 +2209,27 @@ async def _process_segments_in_batches(
     print(f"🎉 Batch processing completed: {final_successful} successful, {final_failed} failed")
     
     return all_results
+
+def get_video_duration_with_ffprobe(video_path: str) -> Optional[float]:
+    """
+    Get video duration using ffprobe
+    """
+    try:
+        cmd = [
+            'ffprobe', 
+            '-v', 'quiet', 
+            '-print_format', 'json', 
+            '-show_format', 
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            duration = float(data.get('format', {}).get('duration', 0))
+            if duration > 0:
+                return duration
+    except Exception as e:
+        print(f"⚠️  Failed to get duration with ffprobe: {e}")
+    
+    return None
