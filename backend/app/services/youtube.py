@@ -494,33 +494,43 @@ class YouTubeService:
             raise DownloadError(f"Unexpected error during file download: {str(e)}")
     
     def _sanitize_filename(self, filename: str) -> str:
-        """Create a safe filename by removing invalid characters"""
+        """Create a safe filename by removing invalid characters and handling Unicode properly"""
         import re
+        import unicodedata
         
-        # Remove emojis and special Unicode characters first
-        filename = re.sub(r'[^\w\s\-\.]', '', filename, flags=re.UNICODE)
+        # Step 1: Handle Unicode characters (like Cyrillic) by converting to ASCII
+        try:
+            # Normalize Unicode and convert to ASCII equivalents
+            sanitized = unicodedata.normalize('NFKD', filename)
+            sanitized = sanitized.encode('ascii', 'ignore').decode('ascii')
+        except Exception:
+            # Fallback: remove non-ASCII characters
+            sanitized = ''.join(char for char in filename if ord(char) < 128)
         
-        # Replace spaces with underscores
-        filename = re.sub(r'\s+', '_', filename)
+        # Step 2: Replace spaces and special characters with underscores
+        sanitized = re.sub(r'[^\w\-\.]', '_', sanitized)
         
-        # Keep only alphanumeric, hyphens, underscores, and dots
-        filename = re.sub(r'[^\w\-\.]', '_', filename)
+        # Step 3: Clean up multiple consecutive underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
         
-        # Remove multiple consecutive underscores
-        filename = re.sub(r'_+', '_', filename)
+        # Step 4: Remove leading/trailing underscores and dots
+        sanitized = sanitized.strip('_.')
         
-        # Remove leading/trailing underscores
-        filename = filename.strip('_')
+        # Step 5: Ensure it's not empty and not too long
+        if not sanitized:
+            sanitized = "unnamed_file"
         
-        # Limit length
-        if len(filename) > 50:
-            filename = filename[:50].rstrip('_')
+        # Limit length for filesystem compatibility
+        if len(sanitized) > 200:
+            # Try to preserve file extension
+            if '.' in sanitized:
+                name_part, ext_part = sanitized.rsplit('.', 1)
+                max_name_length = 200 - len(ext_part) - 1
+                sanitized = name_part[:max_name_length] + '.' + ext_part
+            else:
+                sanitized = sanitized[:200]
         
-        # Ensure filename is not empty
-        if not filename:
-            filename = "video"
-        
-        return filename
+        return sanitized
 
 
 

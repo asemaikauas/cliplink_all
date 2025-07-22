@@ -97,12 +97,61 @@ class AzureBlobStorageService:
             raise
     
     def _sanitize_blob_name(self, blob_name: str) -> str:
-        """Sanitize blob name for Azure Blob Storage compliance"""
+        """
+        Sanitize blob name for Azure Blob Storage compliance
+        
+        Azure Blob Storage naming requirements:
+        - Must be 1-1024 characters long
+        - Can contain letters, numbers, and these characters: . - _ / 
+        - Cannot contain spaces or other special characters
+        - Must be URL-safe
+        """
         import urllib.parse
-        # Replace any problematic characters and URL encode
-        sanitized = blob_name.replace("\\", "/")  # Normalize path separators
-        # URL encode to handle special characters
-        sanitized = urllib.parse.quote(sanitized, safe='/')
+        import unicodedata
+        import re
+        
+        # Step 1: Handle Unicode characters (like Cyrillic) by converting to ASCII
+        # This converts accented characters to their ASCII equivalents
+        try:
+            # Normalize Unicode and convert to ASCII
+            sanitized = unicodedata.normalize('NFKD', blob_name)
+            sanitized = sanitized.encode('ascii', 'ignore').decode('ascii')
+        except Exception:
+            # Fallback: just remove non-ASCII characters
+            sanitized = ''.join(char for char in blob_name if ord(char) < 128)
+        
+        # Step 2: Replace problematic characters
+        sanitized = sanitized.replace("\\", "/")  # Normalize path separators
+        sanitized = sanitized.replace(" ", "_")   # Replace spaces with underscores
+        
+        # Step 3: Remove any remaining problematic characters
+        # Keep only: letters, numbers, dots, hyphens, underscores, forward slashes
+        sanitized = re.sub(r'[^a-zA-Z0-9.\-_/]', '_', sanitized)
+        
+        # Step 4: Clean up multiple consecutive underscores/separators
+        sanitized = re.sub(r'[_]{2,}', '_', sanitized)  # Multiple underscores -> single
+        sanitized = re.sub(r'[/]{2,}', '/', sanitized)  # Multiple slashes -> single
+        
+        # Step 5: Remove leading/trailing separators
+        sanitized = sanitized.strip('/_')
+        
+        # Step 6: Ensure it's not empty and not too long
+        if not sanitized:
+            sanitized = "unnamed_file"
+        
+        # Limit to 1000 characters (Azure limit is 1024, leaving some buffer)
+        if len(sanitized) > 1000:
+            # Keep the extension if possible
+            if '.' in sanitized:
+                name_part, ext_part = sanitized.rsplit('.', 1)
+                max_name_length = 1000 - len(ext_part) - 1  # -1 for the dot
+                sanitized = name_part[:max_name_length] + '.' + ext_part
+            else:
+                sanitized = sanitized[:1000]
+        
+        # Step 7: Final URL encoding for any remaining edge cases
+        sanitized = urllib.parse.quote(sanitized, safe='/./_-')
+        
         return sanitized
     
     async def upload_file(
@@ -166,7 +215,37 @@ class AzureBlobStorageService:
             return blob_url
             
         except Exception as e:
-            logger.error(f"Failed to upload file {file_path}: {str(e)}")
+            error_details = {
+                "file_path": file_path,
+                "original_blob_name": original_blob_name,
+                "sanitized_blob_name": blob_name,
+                "container_name": container_name,
+                "container_type": container_type,
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+            
+            logger.error(f"❌ Azure upload failed with details: {error_details}")
+            
+            # Check for common issues
+            if "400" in str(e) and "Bad Request" in str(e):
+                logger.error(f"🔍 Azure 400 Error Analysis:")
+                logger.error(f"   Original name: '{original_blob_name}'")
+                logger.error(f"   Sanitized name: '{blob_name}'")
+                logger.error(f"   Container: '{container_name}'")
+                logger.error(f"   File exists: {Path(file_path).exists()}")
+                logger.error(f"   File size: {Path(file_path).stat().st_size if Path(file_path).exists() else 'N/A'} bytes")
+                
+                # Additional blob name validation
+                if len(blob_name) == 0:
+                    logger.error(f"   ❌ Blob name is empty after sanitization!")
+                elif len(blob_name) > 1024:
+                    logger.error(f"   ❌ Blob name too long: {len(blob_name)} characters")
+                elif blob_name.startswith('/') or blob_name.endswith('/'):
+                    logger.error(f"   ❌ Blob name has invalid leading/trailing slashes")
+                else:
+                    logger.error(f"   ✅ Blob name appears valid, issue might be elsewhere")
+            
             raise FileUploadError(f"Failed to upload file to Azure Blob Storage: {str(e)}")
     
     async def upload_stream(

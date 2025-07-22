@@ -38,7 +38,7 @@ async def analyze_transcript_with_gemini(transcript_data: Dict[str, Any]) -> Dic
      story producer for social networks (TikTok, YouTube Shorts, Reels) with 10 
      years of experience.
 
-     Your task is to analyze the full text transcription, title, description and category of the Youtube Video and construct up to 10 viral short videos 
+     Your task is to analyze the full text transcription, title, description and category of the Youtube Video and construct up to 8 viral short videos 
      with a clear storyline, selecting the catchy and sensational moments to drive people watch the full video. Video should start with a "hook" in the 
      first 3-7 seconds that contains provocative, catching attention information. Each video should have one unique idea, story or theme. Provide 
      duration of each selected video segment in seconds with start and end timecodes. 
@@ -55,13 +55,14 @@ async def analyze_transcript_with_gemini(transcript_data: Dict[str, Any]) -> Dic
      {timecodes}
      
      INSTRUCTIONS:
-     Analyze the transcript for viral moments, hooks, and engaging content, create 5 short video segments (40 seconds to 2 minutes each) depending 
+     Analyze the transcript for viral moments, hooks, and engaging content, create 3-8 short video segments (40 seconds to 80 seconds maximum each) depending 
      on the length of the video and truly viral moments, focus on controversial, surprising, educational, or entertaining moments, use the timecodes 
-     to select precise start/end times in seconds. Make sure that 
-     selected video segments are not overlappping and tell one story. 
+     to select precise start/end times in seconds. Make sure that selected video segments are not overlappping, and that they tell one story. You shoudld 
+     make sure that segments contains logically complete sentences (it should not abruptly start or abruptly end). 
+     Segment must not be more than 80-90 seconds. 
 
      1. Use the transcript + timecodes to pick exact start & end in seconds (floats not allowed).  
-     2. Duration for every segment: 40 ≤ (end − start) ≤ 120.  
+     2. Duration for every segment: 40 ≤ (end − start) ≤ 90.  
 
      
      Output Format: 
