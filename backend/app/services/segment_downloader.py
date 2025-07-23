@@ -205,36 +205,8 @@ class SegmentDownloadService:
             logger.info(f"✅ Segment {segment_index+1} downloaded: {file_size_mb:.1f} MB")
             
             # Upload to Azure temp storage (user requirement #3)
+            # No Azure temp upload: keep segment only locally
             azure_temp_url = None
-            if self.azure_storage:
-                try:
-                    logger.info(f"☁️ Uploading segment {segment_index+1} to Azure temp storage...")
-                    
-                    # Create blob name for temp storage
-                    blob_name = f"{video_id}/segments/{safe_title}_{segment_index+1}.mp4"
-                    
-                    # Upload with 2-hour expiry (temp storage)
-                    azure_temp_url = await self.azure_storage.upload_file(
-                        file_path=str(local_output_path),
-                        blob_name=blob_name,
-                        container_type="temp_videos",
-                        metadata={
-                            "video_id": video_id,
-                            "segment_index": str(segment_index + 1),
-                            "segment_title": segment_title,
-                            "start_time": str(start_time),
-                            "end_time": str(end_time),
-                            "duration": str(duration),
-                            "purpose": "segment_processing",
-                            "workflow_step": "downloaded_segment"
-                        }
-                    )
-                    
-                    logger.info(f"✅ Segment {segment_index+1} uploaded to Azure temp storage")
-                    
-                except Exception as azure_error:
-                    logger.warning(f"⚠️ Azure temp upload failed for segment {segment_index+1}: {azure_error}")
-                    # Continue without Azure - local file still available
             
             return {
                 "success": True,
