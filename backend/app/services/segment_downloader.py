@@ -163,6 +163,12 @@ class SegmentDownloadService:
             logger.info(f"📝 Original title: '{segment_title}' → Safe title: '{safe_title}'")
             
             # FFmpeg command to download specific segment
+            # Add Apify proxy support if APIFY_PROXY_URL is set
+            apify_proxy_url = os.getenv("APIFY_PROXY_URL")
+            proxy_args = []
+            if apify_proxy_url:
+                proxy_args = ['-http_proxy', apify_proxy_url]
+
             cmd = [
                 'ffmpeg',
                 '-hide_banner', '-loglevel', 'error',
@@ -175,6 +181,9 @@ class SegmentDownloadService:
                 str(local_output_path),
                 '-y'  # Overwrite output
             ]
+            # Insert proxy args after 'ffmpeg' if present
+            if proxy_args:
+                cmd = ['ffmpeg'] + proxy_args + cmd[1:]
             
             # Run FFmpeg
             process = await asyncio.create_subprocess_exec(
@@ -314,7 +323,7 @@ class SegmentDownloadService:
         }
         
         # Run Apify Actor
-        run = self.client.actor("y1IMcEPawMQPafm02").call(run_input=run_input)
+        run = self.client.actor("QrdkHOap2H2LvbyZk").call(run_input=run_input)
         
         # Get results
         dataset = self.client.dataset(run["defaultDatasetId"])
