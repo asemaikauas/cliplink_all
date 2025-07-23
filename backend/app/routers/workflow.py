@@ -426,7 +426,7 @@ async def _process_video_workflow_async(
         # STEP 0: Extract video information
         _update_workflow_progress(task_id, "info", 5, "Extracting video information...")
         youtube_service = YouTubeService()
-        video_info = await youtube_service.get_video_info(youtube_url)
+        video_info = youtube_service.get_video_info(youtube_url)
         
         # STEP 1: Transcript Extraction
         _update_workflow_progress(task_id, "transcript", 10, "Extracting necessary data yoyo...")
