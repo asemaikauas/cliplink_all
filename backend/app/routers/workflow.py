@@ -1353,89 +1353,134 @@ async def process_comprehensive_workflow_async(
     Returns immediately with task_id for status polling.
     """
     try:
+        print(f"🚀 Starting comprehensive workflow endpoint for user {current_user.id}")
+        
         # Generate unique task ID
         task_id = f"comprehensive_{uuid.uuid4().hex[:8]}"
+        print(f"📋 Generated task ID: {task_id}")
         
         # Validate font size
         if request.font_size and (request.font_size < 12 or request.font_size > 120):
+            print(f"❌ Invalid font size: {request.font_size}")
             raise HTTPException(status_code=400, detail="Font size must be between 12 and 120")
         
+        print(f"📺 Extracting video info for: {request.youtube_url}")
+        
         # Extract video info and create database record
-        from app.services.youtube import get_video_id, get_video_info
-        video_id = get_video_id(request.youtube_url)
-        video_info = get_video_info(request.youtube_url)
+        try:
+            from app.services.youtube import get_video_id, get_video_info
+            video_id = get_video_id(request.youtube_url)
+            print(f"✅ Video ID extracted: {video_id}")
+            
+            video_info = get_video_info(request.youtube_url)
+            print(f"✅ Video info retrieved: {video_info.get('title', 'Unknown')}")
+        except Exception as e:
+            print(f"❌ Failed to get video info: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Failed to get video info: {str(e)}")
+        
+        print(f"🔍 Checking for existing video in database...")
         
         # Check if user already has this video being processed
-        from sqlalchemy import select
-        existing_video_query = select(Video).where(
-            Video.user_id == current_user.id,
-            Video.youtube_id == video_id
-        )
-        existing_video_result = await db.execute(existing_video_query)
-        existing_video = existing_video_result.scalar_one_or_none()
-        
-        if existing_video and existing_video.status == VideoStatus.PROCESSING.value:
-            raise HTTPException(
-                status_code=400,
-                detail="You already have this video being processed. Please wait for it to complete."
+        try:
+            from sqlalchemy import select
+            existing_video_query = select(Video).where(
+                Video.user_id == current_user.id,
+                Video.youtube_id == video_id
             )
+            existing_video_result = await db.execute(existing_video_query)
+            existing_video = existing_video_result.scalar_one_or_none()
+            print(f"🔍 Existing video check complete. Found: {existing_video is not None}")
+            
+            if existing_video and existing_video.status == VideoStatus.PROCESSING.value:
+                print(f"❌ Video already being processed: {existing_video.id}")
+                raise HTTPException(
+                    status_code=400,
+                    detail="You already have this video being processed. Please wait for it to complete."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"❌ Database query failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        
+        print(f"💾 Creating/updating video record...")
         
         # Create or update video record
-        if existing_video:
-            video_record = existing_video
-            video_record.status = VideoStatus.PROCESSING
-        else:
-            video_record = Video(
-                user_id=current_user.id,  # ← Authenticated user ownership
-                youtube_id=video_id,
-                title=video_info.get('title', 'Unknown Title'),
-                status=VideoStatus.PROCESSING
-            )
-            db.add(video_record)
-        
-        await db.commit()
-        await db.refresh(video_record)
+        try:
+            if existing_video:
+                video_record = existing_video
+                video_record.status = VideoStatus.PROCESSING
+                print(f"📝 Updated existing video record: {video_record.id}")
+            else:
+                video_record = Video(
+                    user_id=current_user.id,  # ← Authenticated user ownership
+                    youtube_id=video_id,
+                    title=video_info.get('title', 'Unknown Title'),
+                    status=VideoStatus.PROCESSING
+                )
+                db.add(video_record)
+                print(f"🆕 Created new video record")
+            
+            await db.commit()
+            await db.refresh(video_record)
+            print(f"✅ Video record saved: {video_record.id}")
+            
+        except Exception as e:
+            print(f"❌ Failed to save video record: {str(e)}")
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to save video record: {str(e)}")
         
         print(f"📊 Created video record for user {current_user.id}: {video_record.id}")
         
         # Initialize task in workflow_tasks
-        with workflow_task_lock:
-            workflow_tasks[task_id] = {
-                "task_id": task_id,
-                "status": "pending",
-                "progress": 0,
-                "stage": "initializing",
-                "message": "Comprehensive video processing request received",
-                "user_id": str(current_user.id),
-                "video_id": str(video_record.id),
-                "youtube_url": request.youtube_url,
-                "youtube_id": video_id,
-                "video_title": video_info.get('title', 'Unknown Title'),
-                "created_at": datetime.now().isoformat(),
-                "error": None,
-                "clip_paths": []
-            }
+        try:
+            with workflow_task_lock:
+                workflow_tasks[task_id] = {
+                    "task_id": task_id,
+                    "status": "pending",
+                    "progress": 0,
+                    "stage": "initializing",
+                    "message": "Comprehensive video processing request received",
+                    "user_id": str(current_user.id),
+                    "video_id": str(video_record.id),
+                    "youtube_url": request.youtube_url,
+                    "youtube_id": video_id,
+                    "video_title": video_info.get('title', 'Unknown Title'),
+                    "created_at": datetime.now().isoformat(),
+                    "error": None,
+                    "clip_paths": []
+                }
+            print(f"✅ Task registered in workflow_tasks")
+        except Exception as e:
+            print(f"❌ Failed to register task: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to register task: {str(e)}")
         
         # Start background processing with database integration
-        workflow_executor.submit(
-            asyncio.run,
-            _process_comprehensive_with_db_updates(
-                task_id=task_id,
-                video_record_id=str(video_record.id),
-                user_id=str(current_user.id),
-                youtube_url=request.youtube_url,
-                quality=request.quality or "best",
-                create_vertical=request.create_vertical if request.create_vertical is not None else True,
-                smoothing_strength=request.smoothing_strength or "very_high",
-                burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
-                font_size=request.font_size or 15,
-                export_codec=request.export_codec or "h264",
-                enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
-                audio_offset_ms=request.audio_offset_ms or 0.0
+        try:
+            print(f"🚀 Starting background processing...")
+            workflow_executor.submit(
+                asyncio.run,
+                _process_comprehensive_with_db_updates(
+                    task_id=task_id,
+                    video_record_id=str(video_record.id),
+                    user_id=str(current_user.id),
+                    youtube_url=request.youtube_url,
+                    quality=request.quality or "best",
+                    create_vertical=request.create_vertical if request.create_vertical is not None else True,
+                    smoothing_strength=request.smoothing_strength or "very_high",
+                    burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
+                    font_size=request.font_size or 15,
+                    export_codec=request.export_codec or "h264",
+                    enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
+                    audio_offset_ms=request.audio_offset_ms or 0.0
+                )
             )
-        )
+            print(f"✅ Background task submitted successfully")
+        except Exception as e:
+            print(f"❌ Failed to start background processing: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to start background processing: {str(e)}")
         
-        return {
+        response_data = {
             "success": True,
             "task_id": task_id,
             "video_id": str(video_record.id),
@@ -1451,9 +1496,18 @@ async def process_comprehensive_workflow_async(
             }
         }
         
+        print(f"✅ Returning success response: {task_id}")
+        return response_data
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        print(f"❌ Unexpected error in comprehensive workflow endpoint: {str(e)}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
-
 
 async def _process_comprehensive_with_db_updates(
     task_id: str,
