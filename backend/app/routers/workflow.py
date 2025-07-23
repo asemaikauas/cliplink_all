@@ -19,7 +19,7 @@ import subprocess
 # Import our services
 from app.services.youtube import (
     get_video_id, download_video, cut_clips, cut_clips_vertical, cut_clips_vertical_async, DownloadError,
-    get_video_info, get_available_formats, youtube_service
+    get_video_info, get_available_formats, youtube_service, YouTubeService
 )
 from app.services.transcript import fetch_youtube_transcript, extract_full_transcript
 from app.services.gemini import analyze_transcript_with_gemini
@@ -422,6 +422,11 @@ async def _process_video_workflow_async(
     """
     try:
         print(f"🚀 Starting optimized workflow for: {youtube_url}")
+        
+        # STEP 0: Extract video information
+        _update_workflow_progress(task_id, "info", 5, "Extracting video information...")
+        youtube_service = YouTubeService()
+        video_info = await youtube_service.get_video_info(youtube_url)
         
         # STEP 1: Transcript Extraction
         _update_workflow_progress(task_id, "transcript", 10, "Extracting necessary data yoyo...")
