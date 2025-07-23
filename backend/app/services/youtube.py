@@ -230,13 +230,13 @@ class YouTubeService:
             # Call Apify YouTube Video Downloader Actor
             logger.info("🔄 Calling Apify YouTube Video Downloader...")
             run_input = {
-                "urls": [url],
-                "resolution": apify_quality,
-                "max_concurrent": 1
+                "startUrls": [{"url": url}],
+                "quality": apify_quality,
+                "maxConcurrency": 1
             }
             
             # Run the Apify Actor
-            run = self.client.actor("y1IMcEPawMQPafm02").call(run_input=run_input)
+            run = self.client.actor("QrdkHOap2H2LvbyZk").call(run_input=run_input)
             
             # Get results from the dataset (working approach)
             dataset = self.client.dataset(run["defaultDatasetId"])

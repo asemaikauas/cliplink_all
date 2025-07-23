@@ -289,9 +289,9 @@ class SegmentDownloadService:
         apify_quality = quality_map.get(quality, "1080p")
         
         run_input = {
-            "urls": [youtube_url],
-            "resolution": apify_quality,
-            "max_concurrent": 1
+            "startUrls": [{"url": youtube_url}],
+            "quality": apify_quality,
+            "maxConcurrency": 1
         }
         
         # Run Apify Actor
