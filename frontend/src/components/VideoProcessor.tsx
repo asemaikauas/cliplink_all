@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import VideoPlayerModal from './VideoPlayerModal';
 import { apiUrl, clipUrl, config } from '../config';
@@ -40,7 +40,7 @@ interface Clip {
 
 
 const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlChange }) => {
-    // const { getToken } = useAuth();
+    const { getToken, isSignedIn, isLoaded } = useAuth();
     const [youtubeUrl, setYoutubeUrl] = useState(initialUrl);
     const [isProcessing, setIsProcessing] = useState(false);
     const [currentTask, setCurrentTask] = useState<ProcessingTask | null>(null);
@@ -51,41 +51,50 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set());
     const [isRestoringTask, setIsRestoringTask] = useState(false);
 
-    // Load clips and YouTube URL from localStorage on component mount
-    useEffect(() => {
-        const savedData = localStorage.getItem('cliplink_data');
-        if (savedData) {
-            try {
-                const parsedData = JSON.parse(savedData);
-                if (parsedData.clips) {
-                    setClips(parsedData.clips);
-                }
-                if (parsedData.youtubeUrl && !youtubeUrl) {
-                    setYoutubeUrl(parsedData.youtubeUrl);
-                }
-            } catch (error) {
-                console.error('Failed to parse saved data:', error);
-                localStorage.removeItem('cliplink_data');
-            }
-        }
-    }, []);
+    // Authentication check
+    if (!isLoaded) {
+        return (
+            <div className="flex items-center justify-center min-h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-gray-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
 
-    // Save clips and YouTube URL to localStorage whenever they change
+    if (!isSignedIn) {
+        return (
+            <div className="flex items-center justify-center min-h-64">
+                <div className="text-center max-w-md mx-auto p-8 bg-white rounded-lg shadow-md">
+                    <div className="text-blue-600 text-4xl mb-4">🔐</div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Authentication Required</h3>
+                    <p className="text-gray-600 mb-4">
+                        Please sign in to process YouTube videos and create clips. Your videos will be saved to your account and accessible across devices.
+                    </p>
+                    <div className="text-sm text-gray-500">
+                        ✅ Secure video processing<br />
+                        ✅ Persistent video storage<br />
+                        ✅ Access from any device
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Load user's recent videos on mount
     useEffect(() => {
-        if (clips.length > 0 && youtubeUrl) {
-            const dataToSave = {
-                clips: clips,
-                youtubeUrl: youtubeUrl,
-                savedAt: new Date().toISOString()
-            };
-            localStorage.setItem('cliplink_data', JSON.stringify(dataToSave));
+        if (isSignedIn) {
+            fetchUserVideos();
         }
-    }, [clips, youtubeUrl]);
+    }, [isSignedIn]);
 
     // Check for any active processing tasks on mount
     useEffect(() => {
-        checkForActiveTask();
-    }, []);
+        if (isSignedIn) {
+            checkForActiveTask();
+        }
+    }, [isSignedIn]);
 
     // Notify parent component when URL changes
     useEffect(() => {
@@ -120,6 +129,70 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [hasActiveTask, currentTask]);
+
+    const fetchUserVideos = async () => {
+        try {
+            const token = await getToken({ template: "cliplink" });
+
+            const response = await fetch(apiUrl('/api/videos?per_page=20'), {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.warn('Failed to fetch user videos:', response.status);
+                return;
+            }
+
+            const data = await response.json();
+
+            // Convert user videos to clips format for display
+            const allClips: Clip[] = [];
+
+            // Fetch clips for each completed video
+            for (const video of data.videos) {
+                if (video.status === 'done') {
+                    try {
+                        const videoDetailResponse = await fetch(apiUrl(`/api/videos/${video.id}`), {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        if (videoDetailResponse.ok) {
+                            const videoDetail = await videoDetailResponse.json();
+                            videoDetail.clips?.forEach((clip: any, index: number) => {
+                                allClips.push({
+                                    id: clip.id,
+                                    title: `${video.title} - Clip ${index + 1}`,
+                                    start_time: clip.start_time,
+                                    end_time: clip.end_time,
+                                    duration: clip.duration,
+                                    s3_url: clip.blob_url, // Use Azure blob URL
+                                    thumbnail_url: clip.thumbnail_url,
+                                    clip_id: clip.id
+                                });
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Error fetching video details:', error);
+                    }
+                }
+            }
+
+            // Update clips state with user's videos
+            if (allClips.length > 0) {
+                setClips(allClips);
+                console.log(`📊 Loaded ${allClips.length} clips from user's videos`);
+            }
+
+        } catch (error) {
+            console.error('Error fetching user videos:', error);
+        }
+    };
 
     const checkForActiveTask = async () => {
         try {
@@ -258,22 +331,20 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
         setIsProcessing(true);
         setError(null);
-        setClips([]);
         setCurrentTask(null);
         setHasActiveTask(true);
         setThumbnailErrors(new Set());
 
-        // Clear any saved data from localStorage when starting new processing
-        localStorage.removeItem('cliplink_data');
-        localStorage.removeItem('cliplink_clips'); // Remove old format if it exists
-
         try {
+            const token = await getToken({ template: "cliplink" });
+
             // Start the comprehensive video processing with H.264-first strategy
             // Using best quality with intelligent fallback to avoid AV1 conversion issues
             const response = await fetch(apiUrl('/api/workflow/process-comprehensive-async'), {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     youtube_url: youtubeUrl.trim(),
@@ -366,37 +437,10 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     localStorage.removeItem('cliplink_active_task_id');
                     localStorage.removeItem('cliplink_active_task_data');
 
-                    // Get clips from the task result
-                    if (taskData.result && taskData.result.files_created && taskData.result.files_created.final_clip_paths) {
-                        const clipPaths = taskData.result.files_created.final_clip_paths;
-                        const segments = taskData.result.analysis_results?.segments || [];
-                        const thumbnails = taskData.result.files_created?.thumbnails || [];
-
-                        const generatedClips = clipPaths.map((path: string, index: number) => {
-                            const segment = segments[index] || {};
-                            const startTime = segment.start || 0;
-                            const endTime = segment.end || 60;
-                            const duration = segment.duration || (endTime - startTime);
-
-                            // Find matching thumbnail
-                            const thumbnail = thumbnails.find((t: any) =>
-                                t.clip_path === path || t.clip_id?.includes(String(index + 1))
-                            );
-
-                            return {
-                                id: `clip-${index}`,
-                                title: segment.title || `Clip ${index + 1}`,
-                                start_time: startTime,
-                                end_time: endTime,
-                                duration: duration,
-                                s3_url: path,
-                                thumbnail_url: thumbnail?.thumbnail_path ?
-                                    `${config.API_BASE_URL}/${thumbnail.thumbnail_path}` : null,
-                                clip_id: thumbnail?.clip_id
-                            };
-                        });
-                        setClips(generatedClips);
-                    }
+                    // Fetch fresh clips from the database after processing completes
+                    setTimeout(() => {
+                        fetchUserVideos();
+                    }, 2000); // Wait 2 seconds for database to be updated
 
                 } else if (taskData.status === 'failed') {
                     clearInterval(pollInterval);

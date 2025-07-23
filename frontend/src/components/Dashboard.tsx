@@ -154,165 +154,125 @@ const Dashboard = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-
-            <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                <div className="px-4 py-6 sm:px-0">
-                    {error ? (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
-                            <h3 className="text-lg font-semibold text-red-800 mb-2">Backend Connection Error</h3>
-                            <p className="text-red-600">{error}</p>
-                            <p className="text-sm text-red-500 mt-2">
-                                Make sure your backend API is accessible at {config.API_BASE_URL}
-                            </p>
-                            <button
-                                onClick={() => {
-                                    setError(null);
-                                    fetchUserData();
-                                }}
-                                className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                            >
-                                Retry
-                            </button>
+            {/* Header */}
+            <div className="bg-white shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">
+                                Welcome back{user?.firstName ? `, ${user.firstName}` : ''}! 👋
+                            </h1>
+                            <p className="text-gray-600 mt-1">Manage your videos and clips</p>
                         </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Welcome Banner */}
-                            {pendingUrl && (
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <div className="flex items-center">
-                                        <div className="text-blue-800">
-                                            <h4 className="font-medium">Ready to Process Your Video! 🎬</h4>
-                                            <p className="text-sm mt-1">
-                                                We've pre-filled the URL you submitted. Click "Generate Clips" below to start processing.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        {userStats && (
+                            <div className="text-right">
+                                <div className="text-2xl font-bold text-blue-600">{userStats.total_clips}</div>
+                                <div className="text-sm text-gray-500">Total Clips</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
 
-                            {/* User Stats Row */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-white overflow-hidden shadow rounded-lg">
-                                    <div className="p-5">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0">
-                                                <div className="text-2xl">📹</div>
-                                            </div>
-                                            <div className="ml-5 w-0 flex-1">
-                                                <dl>
-                                                    <dt className="text-sm font-medium text-gray-500 truncate">
-                                                        Total Videos
-                                                    </dt>
-                                                    <dd className="text-lg font-medium text-gray-900">
-                                                        {userStats ? userStats.total_videos : '...'}
-                                                    </dd>
-                                                </dl>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+            {/* Main Content */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    {/* Process New Video Card */}
+                    <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => window.location.href = '/process'}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold mb-2">🎬 Process New Video</h3>
+                                <p className="text-blue-100 text-sm">Transform YouTube videos into viral vertical clips</p>
+                            </div>
+                            <div className="text-3xl">→</div>
+                        </div>
+                        <div className="mt-4 text-xs text-blue-100">
+                            ✨ AI-powered • 📱 Vertical format • 📝 Auto subtitles
+                        </div>
+                    </div>
 
-                                <div className="bg-white overflow-hidden shadow rounded-lg">
-                                    <div className="p-5">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0">
-                                                <div className="text-2xl">✂️</div>
-                                            </div>
-                                            <div className="ml-5 w-0 flex-1">
-                                                <dl>
-                                                    <dt className="text-sm font-medium text-gray-500 truncate">
-                                                        Total Clips
-                                                    </dt>
-                                                    <dd className="text-lg font-medium text-gray-900">
-                                                        {userStats ? userStats.total_clips : '...'}
-                                                    </dd>
-                                                </dl>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                    {/* Your Videos Card */}
+                    <div className="bg-white rounded-lg p-6 shadow-sm border cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => window.location.href = '/clips'}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-semibold mb-2 text-gray-900">📁 Your Videos</h3>
+                                <p className="text-gray-600 text-sm">Browse and manage your processed videos</p>
+                            </div>
+                            <div className="text-2xl text-gray-400">→</div>
+                        </div>
+                        {userStats && (
+                            <div className="mt-4 flex items-center space-x-4 text-sm text-gray-500">
+                                <span>{userStats.total_videos} videos</span>
+                                <span>•</span>
+                                <span>{userStats.total_clips} clips</span>
+                            </div>
+                        )}
+                    </div>
 
-                                <div className="bg-white overflow-hidden shadow rounded-lg">
-                                    <div className="p-5">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0">
-                                                <div className="text-2xl">⚡</div>
-                                            </div>
-                                            <div className="ml-5 w-0 flex-1">
-                                                <dl>
-                                                    <dt className="text-sm font-medium text-gray-500 truncate">
-                                                        Processing
-                                                    </dt>
-                                                    <dd className="text-lg font-medium text-yellow-600">
-                                                        {userStats ? userStats.videos_processing : '...'}
-                                                    </dd>
-                                                </dl>
-                                            </div>
-                                        </div>
-                                    </div>
+                    {/* Quick Stats Card */}
+                    <div className="bg-white rounded-lg p-6 shadow-sm border">
+                        <h3 className="text-lg font-semibold mb-4 text-gray-900">📊 Quick Stats</h3>
+                        {userStats ? (
+                            <div className="space-y-3">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Processing</span>
+                                    <span className="font-medium text-orange-600">{userStats.videos_processing}</span>
                                 </div>
-
-                                <div className="bg-white overflow-hidden shadow rounded-lg">
-                                    <div className="p-5">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0">
-                                                <div className="text-2xl">✅</div>
-                                            </div>
-                                            <div className="ml-5 w-0 flex-1">
-                                                <dl>
-                                                    <dt className="text-sm font-medium text-gray-500 truncate">
-                                                        Completed
-                                                    </dt>
-                                                    <dd className="text-lg font-medium text-green-600">
-                                                        {userStats ? userStats.videos_completed : '...'}
-                                                    </dd>
-                                                </dl>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Completed</span>
+                                    <span className="font-medium text-green-600">{userStats.videos_completed}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Failed</span>
+                                    <span className="font-medium text-red-600">{userStats.videos_failed}</span>
                                 </div>
                             </div>
+                        ) : (
+                            <div className="text-center text-gray-500">Loading stats...</div>
+                        )}
+                    </div>
+                </div>
 
-                            {/* Video Processor Component */}
-                            <VideoProcessor
-                                initialUrl={pendingUrl}
-                            />
+                {/* Video Processor Component */}
+                <VideoProcessor
+                    initialUrl={pendingUrl}
+                />
 
-                            {/* User Profile Info */}
-                            <div className="bg-white overflow-hidden shadow rounded-lg">
-                                <div className="px-4 py-5 sm:p-6">
-                                    <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                                        Account Information
-                                    </h3>
-                                    {userData ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <span className="text-sm font-medium text-gray-500">Email:</span>
-                                                <p className="text-sm text-gray-900">{userData.email}</p>
-                                            </div>
-                                            <div>
-                                                <span className="text-sm font-medium text-gray-500">Name:</span>
-                                                <p className="text-sm text-gray-900">
-                                                    {userData.first_name || userData.last_name
-                                                        ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim()
-                                                        : 'Not provided'
-                                                    }
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <span className="text-sm font-medium text-gray-500">Member Since:</span>
-                                                <p className="text-sm text-gray-900">
-                                                    {new Date(userData.created_at).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <p className="text-gray-500">Loading account information...</p>
-                                    )}
+                {/* User Profile Info */}
+                <div className="bg-white overflow-hidden shadow rounded-lg">
+                    <div className="px-4 py-5 sm:p-6">
+                        <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                            Account Information
+                        </h3>
+                        {userData ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-sm font-medium text-gray-500">Email:</span>
+                                    <p className="text-sm text-gray-900">{userData.email}</p>
+                                </div>
+                                <div>
+                                    <span className="text-sm font-medium text-gray-500">Name:</span>
+                                    <p className="text-sm text-gray-900">
+                                        {userData.first_name || userData.last_name
+                                            ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim()
+                                            : 'Not provided'
+                                        }
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-sm font-medium text-gray-500">Member Since:</span>
+                                    <p className="text-sm text-gray-900">
+                                        {new Date(userData.created_at).toLocaleDateString()}
+                                    </p>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <p className="text-gray-500">Loading account information...</p>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

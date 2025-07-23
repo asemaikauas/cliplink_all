@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard'
 import ClipsFolders from './components/ClipsFolders'
 import FolderDetail from './components/FolderDetail'
 import { SignedIn, UserButton, useAuth } from '@clerk/clerk-react'
+import VideoProcessor from './components/VideoProcessor'
 
 export default function App() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -46,6 +47,24 @@ export default function App() {
                   >
                     Home
                   </button>
+                  <button
+                    onClick={() => window.location.href = '/process'}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${path === '/process'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                  >
+                    Process Video
+                  </button>
+                  <button
+                    onClick={() => window.location.href = '/clips'}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${path === '/clips' || path.startsWith('/clips/')
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                  >
+                    My Videos
+                  </button>
                 </nav>
               </div>
               <div className="flex items-center space-x-4">
@@ -59,6 +78,15 @@ export default function App() {
         {path === '/dashboard' && <Dashboard />}
         {path === '/clips' && <ClipsFolders />}
         {path.startsWith('/clips/') && <FolderDetail />}
+        {path === '/process' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">🎬 Process YouTube Video</h1>
+              <p className="text-gray-600">Transform any YouTube video into viral vertical clips with AI-powered analysis and automatic subtitles.</p>
+            </div>
+            <VideoProcessor />
+          </div>
+        )}
       </>
     );
   }

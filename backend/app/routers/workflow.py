@@ -1328,27 +1328,27 @@ async def _process_single_segment_optimized(
 
 
 @router.post("/process-comprehensive-async")
-async def process_comprehensive_workflow_async(request: ComprehensiveWorkflowRequest):
+async def process_comprehensive_workflow_async(
+    request: ComprehensiveWorkflowRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    🚀 COMPREHENSIVE async workflow - NOW OPTIMIZED to follow user requirements:
+    🚀 COMPREHENSIVE async workflow - NOW REQUIRES AUTHENTICATION:
     
     1. 📄 Transcript extraction (via transcript API)  
     2. 🤖 Gemini AI analysis (timecodes extraction)
-    3. 📥 Download only necessary parts based on Gemini timecodes → Azure temp storage
-    4. 🔄 Horizontal clip → vertical clip (OpenCV + ffmpeg cropping)
-    5. 📝 Subtitle burning (optional, based on user selection)
-    6. ☁️ Final clips upload to Azure blob (temporary horizontal clips deleted)
+    3. 📥 Download full video and process clips
+    4. 🔄 Vertical cropping with pure FFmpeg
+    5. 📝 Subtitle burning (mandatory with speech sync)
+    6. ☁️ Final clips upload to Azure blob storage
+    7. 💾 Save video and clips to database for authenticated user
     
-    🎯 UPDATED: Now uses the optimized transcript-first workflow by default!
+    🔐 AUTHENTICATION REQUIRED: User must be logged in to process videos
+    🎯 PERSISTENT STORAGE: Videos and clips saved to PostgreSQL database
     
-    🎯 ADVANCED SUBTITLE FEATURES:
-    - Word-level timestamp synchronization for perfect speech alignment
-    - VAD filtering with intelligent retry logic
-    - Environment-configurable parameters
-    - Multiple fallback strategies for maximum reliability
-    
-    This is the ultimate all-in-one endpoint that takes a YouTube URL and produces 
-    ready-to-upload short clips with professional-quality burned-in subtitles!
+    This endpoint creates a Video record owned by the authenticated user
+    and processes it asynchronously with full database integration.
     
     Returns immediately with task_id for status polling.
     """
@@ -1360,87 +1360,245 @@ async def process_comprehensive_workflow_async(request: ComprehensiveWorkflowReq
         if request.font_size and (request.font_size < 12 or request.font_size > 120):
             raise HTTPException(status_code=400, detail="Font size must be between 12 and 120")
         
-        # Initialize task tracking
+        # Extract video info and create database record
+        from app.services.youtube import get_video_id, get_video_info
+        video_id = get_video_id(request.youtube_url)
+        video_info = get_video_info(request.youtube_url)
+        
+        # Check if user already has this video being processed
+        from sqlalchemy import select
+        existing_video_query = select(Video).where(
+            Video.user_id == current_user.id,
+            Video.youtube_id == video_id
+        )
+        existing_video_result = await db.execute(existing_video_query)
+        existing_video = existing_video_result.scalar_one_or_none()
+        
+        if existing_video and existing_video.status == VideoStatus.PROCESSING.value:
+            raise HTTPException(
+                status_code=400,
+                detail="You already have this video being processed. Please wait for it to complete."
+            )
+        
+        # Create or update video record
+        if existing_video:
+            video_record = existing_video
+            video_record.status = VideoStatus.PROCESSING
+        else:
+            video_record = Video(
+                user_id=current_user.id,  # ← Authenticated user ownership
+                youtube_id=video_id,
+                title=video_info.get('title', 'Unknown Title'),
+                status=VideoStatus.PROCESSING
+            )
+            db.add(video_record)
+        
+        await db.commit()
+        await db.refresh(video_record)
+        
+        print(f"📊 Created video record for user {current_user.id}: {video_record.id}")
+        
+        # Initialize task in workflow_tasks
         with workflow_task_lock:
             workflow_tasks[task_id] = {
                 "task_id": task_id,
-                "status": "queued",
+                "status": "pending",
                 "progress": 0,
-                "created_at": datetime.now(),
+                "stage": "initializing",
+                "message": "Comprehensive video processing request received",
+                "user_id": str(current_user.id),
+                "video_id": str(video_record.id),
                 "youtube_url": request.youtube_url,
-                "quality": request.quality or "best",
-                "create_vertical": request.create_vertical,
-                "smoothing_strength": request.smoothing_strength,
-                "burn_subtitles": request.burn_subtitles,
-                "font_size": request.font_size,
-                "export_codec": request.export_codec,
-                "enable_audio_sync_fix": request.enable_audio_sync_fix,
-                "audio_offset_ms": request.audio_offset_ms,
-                "speech_synchronization": True,  # Always enabled
-                "vad_filtering": True,  # Always enabled
-                "priority": request.priority or "normal",
-                "notify_webhook": request.notify_webhook,
-                "current_step": "queued",
-                "message": "Comprehensive workflow queued for processing",
+                "youtube_id": video_id,
+                "video_title": video_info.get('title', 'Unknown Title'),
+                "created_at": datetime.now().isoformat(),
                 "error": None,
-                "workflow_type": "comprehensive"
+                "clip_paths": []
             }
         
-        print(f"🚀 Comprehensive workflow {task_id} queued: {request.youtube_url}")
-        print(f"🎯 Settings: quality={request.quality}, vertical={request.create_vertical}, subtitles={request.burn_subtitles}")
-        print(f"🎬 Subtitle settings: speech_sync=True, vad_filtering=True, size={request.font_size}px, codec={request.export_codec}")
-        
-        # Start async processing (don't await - let it run in background)
-        # Note: Using the optimized workflow function with speech synchronization
-        asyncio.create_task(_process_video_workflow_async(
-            task_id,
-            request.youtube_url,
-            request.quality or "best",
-            request.create_vertical or True,
-            request.smoothing_strength or "very_high",
-            request.burn_subtitles or False,
-            request.font_size or 15,
-            request.export_codec or "h264",
-            request.enable_audio_sync_fix,
-            request.audio_offset_ms
-        ))
+        # Start background processing with database integration
+        workflow_executor.submit(
+            asyncio.run,
+            _process_comprehensive_with_db_updates(
+                task_id=task_id,
+                video_record_id=str(video_record.id),
+                user_id=str(current_user.id),
+                youtube_url=request.youtube_url,
+                quality=request.quality or "best",
+                create_vertical=request.create_vertical if request.create_vertical is not None else True,
+                smoothing_strength=request.smoothing_strength or "very_high",
+                burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
+                font_size=request.font_size or 15,
+                export_codec=request.export_codec or "h264",
+                enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
+                audio_offset_ms=request.audio_offset_ms or 0.0
+            )
+        )
         
         return {
             "success": True,
             "task_id": task_id,
-            "message": "🎬 Comprehensive workflow started! This will create clips with burned-in subtitles.",
-            "youtube_url": request.youtube_url,
-            "workflow_type": "comprehensive",
-            "settings": {
-                "quality": request.quality or "best",
-                "create_vertical": request.create_vertical or True,
-                "smoothing_strength": request.smoothing_strength or "very_high",
-                "burn_subtitles": request.burn_subtitles or True,
-                "speech_synchronization": True,
-                "vad_filtering": True,
-                "font_size": request.font_size or 15,
-                "export_codec": request.export_codec or "h264",
-                "enable_audio_sync_fix": request.enable_audio_sync_fix,
-                "audio_offset_ms": request.audio_offset_ms
+            "video_id": str(video_record.id),
+            "message": "Comprehensive video processing started successfully",
+            "status_url": f"/workflow/status/{task_id}",
+            "estimated_time": "2-4 minutes",
+            "video_info": {
+                "id": video_id,
+                "title": video_info.get('title', 'Unknown Title')
             },
-            "workflow_steps": [
-                "1. Video info extraction",
-                "2. Video download",
-                "3. Transcript extraction", 
-                "4. Gemini AI analysis",
-                "5. Vertical clip cutting",
-                "6. Per-clip speech-synchronized subtitle generation",
-                "7. Professional subtitle burning with word-level timing",
-                "8. Upload to Azure Blob Storage",
-                "9. Final processing"
-            ],
-            "status_endpoint": f"/workflow/workflow-status/{task_id}",
-            "estimated_time": "10-30 minutes depending on video length and quality"
+            "user_info": {
+                "user_id": str(current_user.id)
+            }
         }
         
     except Exception as e:
-        print(f"❌ Failed to start comprehensive workflow: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to start comprehensive workflow: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
+
+
+async def _process_comprehensive_with_db_updates(
+    task_id: str,
+    video_record_id: str,
+    user_id: str,
+    youtube_url: str,
+    quality: str,
+    create_vertical: bool,
+    smoothing_strength: str,
+    burn_subtitles: bool = True,
+    font_size: int = 15,
+    export_codec: str = "h264",
+    enable_audio_sync_fix: bool = True,
+    audio_offset_ms: float = 0.0
+):
+    """
+    Process comprehensive workflow and update database records for authenticated user
+    """
+    from ..database import get_db_session
+    from sqlalchemy import select
+    
+    db = get_db_session()
+    
+    try:
+        print(f"🚀 Starting comprehensive workflow for user {user_id}, video {video_record_id}")
+        
+        # Get the video record
+        query = select(Video).where(Video.id == video_record_id)
+        result = await db.execute(query)
+        video_record = result.scalar_one_or_none()
+        
+        if not video_record:
+            raise Exception(f"Video record {video_record_id} not found")
+        
+        # Update task with video record info
+        with workflow_task_lock:
+            workflow_tasks[task_id]["video_record_id"] = video_record_id
+            workflow_tasks[task_id]["user_id"] = user_id
+        
+        # Call the existing comprehensive workflow
+        workflow_result = await _process_video_workflow_async(
+            task_id=task_id,
+            youtube_url=youtube_url,
+            quality=quality,
+            create_vertical=create_vertical,
+            smoothing_strength=smoothing_strength,
+            burn_subtitles=burn_subtitles,
+            font_size=font_size,
+            export_codec=export_codec,
+            enable_audio_sync_fix=enable_audio_sync_fix,
+            audio_offset_ms=audio_offset_ms
+        )
+        
+        # Update video status and save clips to database
+        if workflow_result.get("success"):
+            video_record.status = VideoStatus.DONE
+            
+            # Extract Azure URLs and segment info from workflow result
+            azure_urls = workflow_result.get("azure_urls", [])
+            
+            # Get segments from task result if available
+            viral_segments = []
+            with workflow_task_lock:
+                task_result = workflow_tasks.get(task_id, {})
+                if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
+                    viral_segments = task_result["result"]["analysis_results"]["segments"]
+            
+            print(f"📊 Saving {len(azure_urls)} clips to database for user {user_id}")
+            
+            # Create clip records with Azure blob URLs
+            clips_created = 0
+            for i, azure_url in enumerate(azure_urls):
+                try:
+                    # Get segment timing info (fallback to defaults if not available)
+                    segment_data = viral_segments[i] if i < len(viral_segments) else {}
+                    start_time = segment_data.get("start", 0.0)
+                    end_time = segment_data.get("end", 60.0)
+                    duration = end_time - start_time
+                    
+                    # Create clip record with Azure blob URL
+                    clip_record = Clip(
+                        video_id=video_record.id,
+                        blob_url=azure_url,  # Azure blob URL
+                        thumbnail_url=None,  # Could be added later
+                        start_time=start_time,
+                        end_time=end_time,
+                        duration=duration,
+                        file_size=None  # Could be added later from Azure metadata
+                    )
+                    
+                    db.add(clip_record)
+                    clips_created += 1
+                    print(f"   ✅ Clip {i+1}: {azure_url}")
+                    
+                except Exception as e:
+                    print(f"   ❌ Failed to save clip {i+1} to database: {str(e)}")
+                    continue
+            
+            await db.commit()
+            print(f"✅ Successfully saved {clips_created} clips to database for user {user_id}")
+            
+            # Update task status to completed
+            with workflow_task_lock:
+                workflow_tasks[task_id].update({
+                    "status": "completed",
+                    "progress": 100,
+                    "message": f"✅ Processing complete! {clips_created} clips created and saved.",
+                    "clips_created": clips_created,
+                    "completed_at": datetime.now()
+                })
+            
+        else:
+            # Update video status to failed
+            video_record.status = VideoStatus.FAILED
+            await db.commit()
+            print(f"❌ Video processing failed for user {user_id}")
+            
+            # Update task status
+            with workflow_task_lock:
+                workflow_tasks[task_id].update({
+                    "status": "failed",
+                    "error": "Workflow processing failed"
+                })
+    
+    except Exception as e:
+        print(f"❌ Database update failed for user {user_id}: {str(e)}")
+        
+        # Try to update video status to failed if we have a record
+        try:
+            if 'video_record' in locals():
+                video_record.status = VideoStatus.FAILED
+                await db.commit()
+        except:
+            pass
+        
+        # Update task status
+        with workflow_task_lock:
+            if task_id in workflow_tasks:
+                workflow_tasks[task_id].update({
+                    "status": "failed",
+                    "error": f"Database update failed: {str(e)}"
+                })
+    
+    finally:
+        await db.close()
 
 @router.post("/process-fast-async")
 async def process_fast_workflow_async(request: FastWorkflowRequest):
