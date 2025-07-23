@@ -55,7 +55,7 @@ class Video(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     youtube_id = Column(String(20), nullable=False)
     title = Column(Text, nullable=True)
-    status = Column(Enum(VideoStatus), nullable=False, default=VideoStatus.PENDING, index=True)
+    status = Column(Enum(VideoStatus, name="video_status"), nullable=False, default=VideoStatus.PENDING, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     # Relationships
