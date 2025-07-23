@@ -285,13 +285,12 @@ async def _process_single_viral_segment_parallel(
                 subtitles_dir = clips_dir / "subtitles"
                 subtitles_dir.mkdir(exist_ok=True)
                 
-                srt_path, _ = await _run_blocking_task(
-                    convert_groq_to_subtitles,
+                srt_path, vtt_path = convert_groq_to_subtitles(
                     groq_segments=transcription_result["segments"],
-                    word_timestamps=transcription_result.get("word_timestamps", []),
                     output_dir=str(subtitles_dir),
                     filename_base=f"clip_{segment_index+1}_{safe_title}",
-                    speech_sync_mode=True
+                    speech_sync_mode=True,  # Enable speech synchronization
+                    word_timestamps=transcription_result.get("word_timestamps", [])  # Use word timing data
                 )
                 
                 # d. Burn subtitles
@@ -302,7 +301,7 @@ async def _process_single_viral_segment_parallel(
                     await _run_blocking_task(
                         burn_subtitles_to_video,
                         video_path=str(processing_clip_path),
-                        srt_path=srt_path,
+                        srt_path=srt_path,  # Use the generated SRT file path
                         output_path=str(subtitled_clip_path),
                         font_size=font_size,
                         export_codec=export_codec
@@ -612,12 +611,23 @@ async def _process_video_workflow_async(
             # Generate subtitles
             subtitle_data = await _run_blocking_task(transcribe, str(vertical_clip))
             if subtitle_data and subtitle_data.get("segments"):
-                srt_data = convert_groq_to_subtitles(subtitle_data)
+                # Use the vertical clip's directory and filename for subtitle output
+                output_dir = str(vertical_clip.parent)
+                filename_base = f"{safe_title}_subtitles_{i+1}"
                 
-                # Burn subtitles
-                burn_result = await burn_subtitles_to_video(
+                srt_path, vtt_path = convert_groq_to_subtitles(
+                    groq_segments=subtitle_data["segments"],
+                    output_dir=output_dir,
+                    filename_base=filename_base,
+                    speech_sync_mode=True,  # Enable speech synchronization
+                    word_timestamps=subtitle_data.get("word_timestamps", [])  # Use word timing data
+                )
+                
+                # Burn subtitles using the SRT file path
+                burn_result = await _run_blocking_task(
+                    burn_subtitles_to_video,
                     video_path=str(vertical_clip),
-                    subtitle_data=srt_data,
+                    srt_path=srt_path,  # Use the generated SRT file path
                     output_path=str(subtitled_path),
                     font_size=font_size,
                     export_codec=export_codec
@@ -1237,11 +1247,22 @@ async def _process_single_segment_optimized(
                 if audio_transcription and 'segments' in audio_transcription:
                     subtitle_data = convert_groq_to_subtitles(audio_transcription)
                     
-                    burn_result = await burn_subtitles_to_video(
-                        video_path=processing_file_path,
-                        subtitle_data=subtitle_data,
-                        output_path=subtitled_clip_path,
-                        font_size=font_size
+                    srt_path, vtt_path = convert_groq_to_subtitles(
+                        groq_segments=subtitle_data["segments"],
+                        output_dir=output_dir,
+                        filename_base=filename_base,
+                        speech_sync_mode=True,  # Enable speech synchronization
+                        word_timestamps=subtitle_data.get("word_timestamps", [])  # Use word timing data
+                    )
+                    
+                    # Burn subtitles using the SRT file path
+                    burn_result = await _run_blocking_task(
+                        burn_subtitles_to_video,
+                        video_path=str(processing_file_path),
+                        srt_path=srt_path,  # Use the generated SRT file path
+                        output_path=str(subtitled_clip_path),
+                        font_size=font_size,
+                        export_codec=export_codec
                     )
                     
                     if burn_result.get("success"):
