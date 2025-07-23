@@ -412,301 +412,166 @@ async def _process_video_workflow_async(
     audio_offset_ms: float = 0.0
 ):
     """
-    🚀 OPTIMIZED async workflow: Transcript → Gemini → Smart Download → Process → Upload to Azure
-    
-    NEW ORDER that matches user requirements:
-    1. Transcript extraction (via transcript API)  
-    2. Gemini AI analysis (timecodes extraction)
-    3. Download only necessary parts based on Gemini timecodes → Azure temp storage
-    4. Horizontal clip → vertical clip (OpenCV + ffmpeg cropping)
-    5. Subtitle burning (optional, based on user selection)
-    6. Final clips upload to Azure blob (temp horizontal clips deleted)
+    Optimized workflow following exact steps:
+    1. Transcript extraction
+    2. Gemini AI analysis
+    3. Download full video (no segments)
+    4. Direct vertical cropping (no horizontal step)
+    5. Subtitle burning (mandatory)
+    6. Upload to Azure
     """
     try:
-        print(f"🚀 Starting OPTIMIZED workflow following user requirements:")
-        print(f"   📺 URL: {youtube_url}")
-        print(f"   🔄 Order: Transcript → Gemini → Smart Downloads → Processing → Azure Upload")
-        print(f"   📱 Create vertical: {create_vertical}")
-        print(f"   🔥 Burn subtitles: {burn_subtitles}")
-        print(f"   🎨 Font size: {font_size}px")
-        print(f"   🎬 Export codec: {export_codec}")
+        print(f"🚀 Starting optimized workflow for: {youtube_url}")
         
-        _update_workflow_progress(task_id, "init", 5, f"Starting optimized workflow for: {youtube_url}")
-        
-        # STEP 1: Get video info (5-15%)
-        _update_workflow_progress(task_id, "video_info", 5, "Getting video information...")
-        video_info = await _run_blocking_task(get_video_info, youtube_url)
-        video_duration = video_info.get('duration', 0)
-        
-        # Handle case where video_duration is None
-        if video_duration is None:
-            video_duration = 0
-            print("⚠️  Video duration is None, will estimate from segments later")
-        
-        _update_workflow_progress(
-            task_id, "video_info", 15, 
-            f"Video info retrieved: {video_info['title']} ({video_duration}s)", 
-            {"video_info": video_info}
-        )
-        
-        # STEP 2: Extract transcript FIRST (15-30%) - User requirement #1
-        _update_workflow_progress(task_id, "transcript", 15, "🎯 Analyzing video")
+        # STEP 1: Transcript Extraction
+        _update_workflow_progress(task_id, "transcript", 10, "Extracting necessary data yoyo...")
         video_id = video_info['id']
-        
         raw_transcript_data = await _run_blocking_task(fetch_youtube_transcript, video_id)
         transcript_result = await _run_blocking_task(extract_full_transcript, raw_transcript_data)
         
         if isinstance(transcript_result, dict) and 'error' in transcript_result:
             raise Exception(f"Transcript error: {transcript_result['error']}")
         
-        _update_workflow_progress(
-            task_id, "transcript", 30, 
-            f"✅ Step 1 complete: Transcript extracted ({len(transcript_result.get('transcript', ''))} characters)",
-            {"transcript_result": transcript_result}
-        )
+        _update_workflow_progress(task_id, "transcript", 20, "✅ Done bratan", {"transcript_result": transcript_result})
         
-        # STEP 3: Gemini Analysis BEFORE downloads (30-45%) - User requirement #2
-        _update_workflow_progress(task_id, "analysis", 30, "🎯 Selecting viral segments...")
+        # STEP 2: Gemini AI Analysis
+        _update_workflow_progress(task_id, "gemini", 30, "Selecting Viral Segments...")
         gemini_analysis = await analyze_transcript_with_gemini(transcript_result)
         
         if not gemini_analysis.get("gemini_analysis", {}).get("viral_segments"):
             raise Exception("No viral segments found in Gemini analysis")
         
         viral_segments = gemini_analysis["gemini_analysis"]["viral_segments"]
-        _update_workflow_progress(
-            task_id, "analysis", 45, 
-            f"✅ Step 2 complete: Gemini found {len(viral_segments)} segments with timecodes",
-            {"gemini_analysis": gemini_analysis}
-        )
+        _update_workflow_progress(task_id, "gemini", 40, f"✅ Found {len(viral_segments)} viral segments", {"gemini_analysis": gemini_analysis})
         
-        # STEP 4: Smart Download Strategy (45-65%) - User requirement #3
-        _update_workflow_progress(task_id, "smart_download", 45, "🎯 Processing video...")
+        # STEP 3: Download Full Video
+        _update_workflow_progress(task_id, "download", 45, f"Analyzing video in {quality} quality...")
+        video_path = await download_video(youtube_url, quality)
+        file_size_mb = video_path.stat().st_size / (1024*1024)
+        _update_workflow_progress(task_id, "download", 50, f"Analysis completed: {file_size_mb:.1f} MB", {"video_path": str(video_path)})
         
-        segment_download_service = await get_segment_download_service()
-        savings_estimate = segment_download_service.estimate_bandwidth_savings(viral_segments, video_duration)
+        # STEP 4: Direct Vertical Cropping
+        _update_workflow_progress(task_id, "vertical_crop", 55, f"Processing {len(viral_segments)}  clips...")
+        from app.services.vertical_crop_async import crop_video_to_vertical_async
         
-        print(f"📊 BANDWIDTH SAVINGS ANALYSIS:")
-        print(f"   📺 Full video duration: {video_duration:.1f}s")
-        print(f"   🎯 Total segments duration: {savings_estimate['total_segment_duration']:.1f}s")
-        print(f"   💾 Estimated bandwidth savings: {savings_estimate['bandwidth_savings_percentage']:.1f}%")
-        
-        # Always use smart segment downloads for user's optimized workflow
-        _update_workflow_progress(task_id, "smart_download", 50, 
-            f"📥 Downloading {len(viral_segments)} segments (saving {savings_estimate['bandwidth_savings_percentage']:.1f}% bandwidth)...")
-        
-        # Download only viral segments - User requirement #3
-        segment_results = await segment_download_service.download_video_segments_with_azure_temp_storage(
-            youtube_url, viral_segments, quality, video_id
-        )
-        
-        # Extract local paths for backward compatibility with processing functions
-        segment_files = []
-        azure_temp_urls = []
-        for segment_result in segment_results:
-            if segment_result.get("success") and segment_result.get("local_path"):
-                segment_files.append(Path(segment_result["local_path"]))
-                if segment_result.get("azure_temp_url"):
-                    azure_temp_urls.append(segment_result["azure_temp_url"])
-        
-        # If video_duration is still None or invalid, try to get it from the first segment
-        if not video_duration or video_duration <= 0:
-            if segment_files:
-                actual_duration = get_video_duration_with_ffprobe(str(segment_files[0]))
-                if actual_duration:
-                    # Estimate total video duration based on segment timestamps
-                    max_segment_end = max(segment.get('end', 0) for segment in viral_segments)
-                    if max_segment_end > actual_duration:
-                        video_duration = max_segment_end
-                        print(f"🔍 Estimated total video duration: {video_duration:.1f}s (from segment timestamps)")
-                    else:
-                        video_duration = actual_duration
-                        print(f"🔍 Got video duration from first segment: {video_duration:.1f}s")
-        
-        total_size_mb = sum(seg.get("file_size_mb", 0) for seg in segment_results)
-        
-        _update_workflow_progress(
-            task_id, "smart_download", 65,
-            f"✅ Step 3 complete: Downloaded {len(segment_files)} segments to temp storage ({total_size_mb:.1f} MB total)",
-            {
-                "segment_files": [str(f) for f in segment_files], 
-                "total_size_mb": total_size_mb,
-                "azure_temp_urls": azure_temp_urls,
-                "azure_temp_uploads": len(azure_temp_urls)
-            }
-        )
-        
-        # STEP 5: Process segments (65-95%) - User requirements #4, #5, #6
-        _update_workflow_progress(task_id, "processing", 65, f"🎯 Processing {len(segment_files)} segments...")
-        
-        processing_tasks = []
-        for i, (segment_file, segment_data) in enumerate(zip(segment_files, viral_segments)):
-            task = _process_single_segment_with_azure_upload(
-                segment_index=i,
-                segment_file=segment_file,
-                segment_data=segment_data,
-                task_id=task_id,
-                create_vertical=create_vertical,  # User requirement #4
+        vertical_clips = []
+        for i, segment in enumerate(viral_segments):
+            safe_title = youtube_service._sanitize_filename(segment.get("title", f"segment_{i+1}"))
+            vertical_clip_path = video_path.parent / f"{safe_title}_vertical_{i+1}.mp4"
+            
+            print(f"🎬 Processing segment {i+1}/{len(viral_segments)}: {segment.get('start')}s to {segment.get('end')}s")
+            
+            crop_result = await crop_video_to_vertical_async(
+                input_path=video_path,
+                output_path=vertical_clip_path,
+                start_time=segment.get('start'),
+                end_time=segment.get('end'),
+                use_speaker_detection=True,
                 smoothing_strength=smoothing_strength,
-                burn_subtitles=burn_subtitles,  # User requirement #5
-                font_size=font_size,
-                export_codec=export_codec
+                task_id=f"{task_id}_seg_{i+1}"
             )
-            processing_tasks.append(task)
-        
-        # Wait for all segments to complete (now using batch processing)
-        segment_results = await _process_segments_in_batches(
-            processing_tasks=processing_tasks,
-            task_id=task_id,
-            batch_size=3,  # Process only 3 clips at a time
-            progress_start=65,
-            progress_end=95
-        )
-        
-        # Process results
-        successful_results = []
-        failed_results = []
-        azure_uploads_successful = 0
-        
-        for i, result in enumerate(segment_results):
-            if isinstance(result, Exception):
-                print(f"❌ Segment {i+1} processing failed: {result}")
-                failed_results.append({"segment_index": i+1, "error": str(result)})
-            elif isinstance(result, dict) and result.get("success"):
-                successful_results.append(result)
-                if result.get("azure_clip_url"):
-                    azure_uploads_successful += 1
-                print(f"✅ Segment {i+1} completed successfully")
+            
+            if crop_result.get("success"):
+                vertical_clips.append(vertical_clip_path)
+                print(f"✅ Vertical clip {i+1} created: {vertical_clip_path.name}")
             else:
-                print(f"❌ Segment {i+1} processing failed: {result}")
-                failed_results.append({"segment_index": i+1, "error": "Unknown processing error"})
+                print(f"❌ Failed to create vertical clip {i+1}: {crop_result.get('error')}")
         
-        _update_workflow_progress(
-            task_id, "processing", 95,
-            f"✅ Steps 4-6 complete: {len(successful_results)}/{len(viral_segments)} segments processed, {azure_uploads_successful} uploaded to Azure"
-        )
+        _update_workflow_progress(task_id, "vertical_crop", 70, f"✅ Created {len(vertical_clips)} vertical clips")
         
-        # STEP 6: Finalize results (95-100%)
-        _update_workflow_progress(task_id, "finalizing", 95, "Finalizing optimized workflow results...")
+        # Delete full video after vertical cropping
+        if video_path.exists():
+            video_path.unlink()
+            print(f"🧹 Deleted full video: {video_path}")
         
-        # Clean up temporary segment files (user requirement #6)
-        try:
-            cleanup_service = await get_cleanup_service()
-            for segment_file in segment_files:
-                if segment_file.exists():
-                    segment_file.unlink()
-            print(f"🧹 Cleaned up {len(segment_files)} temporary segment files")
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to cleanup temp files: {str(e)}")
+        # STEP 5: Burn Subtitles (Mandatory)
+        _update_workflow_progress(task_id, "subtitles", 75, "Burning subtitles into clips...")
+        from app.services.burn_in import burn_subtitles_to_video
+        from app.services.subs import convert_groq_to_subtitles
         
-        # Build result
-        final_clip_paths = [r["clip_path"] for r in successful_results if r.get("clip_path")]
-        azure_clips_info = [r for r in successful_results if r.get("azure_clip_url")]
-        subtitled_count = sum(1 for r in successful_results if r.get("has_subtitles"))
-        thumbnail_info = [r for r in successful_results if r.get("thumbnail_path")]
+        final_clips = []
+        for i, (vertical_clip, segment) in enumerate(zip(vertical_clips, viral_segments)):
+            safe_title = youtube_service._sanitize_filename(segment.get("title", f"segment_{i+1}"))
+            subtitled_path = vertical_clip.parent / f"{safe_title}_final_{i+1}.mp4"
+            
+            print(f"🔤 Adding subtitles to clip {i+1}/{len(vertical_clips)}")
+            
+            # Generate subtitles
+            subtitle_data = await transcribe(str(vertical_clip))
+            if subtitle_data and subtitle_data.get("segments"):
+                srt_data = convert_groq_to_subtitles(subtitle_data)
+                
+                # Burn subtitles
+                burn_result = await burn_subtitles_to_video(
+                    video_path=str(vertical_clip),
+                    subtitle_data=srt_data,
+                    output_path=str(subtitled_path),
+                    font_size=font_size,
+                    export_codec=export_codec
+                )
+                
+                if burn_result.get("success"):
+                    final_clips.append(subtitled_path)
+                    print(f"✅ Subtitles added to clip {i+1}")
+                    
+                    # Clean up vertical clip without subtitles
+                    if vertical_clip.exists():
+                        vertical_clip.unlink()
         
-        result = {
+        _update_workflow_progress(task_id, "subtitles", 85, f"✅ Added subtitles to {len(final_clips)} clips")
+        
+        # STEP 6: Upload to Azure
+        _update_workflow_progress(task_id, "upload", 90, "Uploading final clips to Azure...")
+        from app.services.clip_storage import get_clip_storage_service
+        clip_storage = await get_clip_storage_service()
+        
+        azure_urls = []
+        for i, final_clip in enumerate(final_clips):
+            safe_title = youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}"))
+            blob_name = f"clips/{safe_title}_{int(time.time())}_{i+1}.mp4"
+            
+            azure_url = await clip_storage.azure_storage.upload_file(
+                file_path=str(final_clip),
+                blob_name=blob_name,
+                container_type="clips",
+                metadata={
+                    "segment_index": str(i),
+                    "title": viral_segments[i].get("title", f"segment_{i+1}"),
+                    "start_time": str(viral_segments[i].get("start")),
+                    "end_time": str(viral_segments[i].get("end")),
+                    "has_subtitles": "true",
+                    "is_vertical": "true",
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+            azure_urls.append(azure_url)
+            print(f"☁️ Uploaded clip {i+1} to Azure")
+            
+            # Clean up local final clip after upload
+            if final_clip.exists():
+                final_clip.unlink()
+        
+        _update_workflow_progress(task_id, "upload", 100, f"✅ Clips are getting ready")
+        
+        # Return success result
+        return {
             "success": True,
-            "workflow_type": "optimized_transcript_first",
-            "optimization_stats": {
-                "bandwidth_savings_percentage": savings_estimate['bandwidth_savings_percentage'],
-                "segments_downloaded": len(segment_files),
-                "total_segments_found": len(viral_segments),
-                "download_strategy": "smart_segment_download",
-                "temp_files_cleaned": len(segment_files)
-            },
-            "workflow_steps": {
-                "transcript_extraction": True,       # ✅ User requirement #1
-                "gemini_analysis": True,            # ✅ User requirement #2
-                "smart_segment_download": True,     # ✅ User requirement #3
-                "azure_temp_storage": True,         # ✅ User requirement #3
-                "horizontal_to_vertical_crop": create_vertical,  # ✅ User requirement #4
-                "subtitle_burning": burn_subtitles and subtitled_count > 0,  # ✅ User requirement #5
-                "azure_final_upload": azure_uploads_successful > 0,  # ✅ User requirement #6
-                "temp_cleanup": True               # ✅ User requirement #6
-            },
+            "workflow_type": "comprehensive",
+            "clips_created": len(azure_urls),
+            "azure_urls": azure_urls,
             "video_info": {
                 "id": video_info['id'],
                 "title": video_info['title'],
-                "duration": video_info['duration'],
-                "uploader": video_info.get('uploader'),
-                "view_count": video_info.get('view_count'),
-                "category": transcript_result.get("category"),
-                "description": video_info.get('description', '')[:200] + "..." if video_info.get('description') else ""
+                "duration": video_info['duration']
             },
-            "analysis_results": {
-                "viral_segments_found": len(viral_segments),
-                "segments": [
-                    {
-                        "title": seg.get("title"),
-                        "start": seg.get("start"),
-                        "end": seg.get("end"),
-                        "duration": seg.get("duration") or (seg.get("end", 0) - seg.get("start", 0))
-                    }
-                    for seg in viral_segments
-                ]
-            },
-            "processing_stats": {
-                "total_segments_processed": len(successful_results),
-                "failed_segments": len(failed_results),
-                "azure_uploads_successful": azure_uploads_successful,
-                "temp_file_cleanup": "completed"
-            },
-            "subtitle_info": {
-                "subtitle_style": "speech_synchronized" if burn_subtitles else None,
-                "clips_with_subtitles": subtitled_count,
-                "total_clips": len(final_clip_paths),
-                "subtitle_success_rate": f"{(subtitled_count/len(final_clip_paths)*100):.1f}%" if len(final_clip_paths) > 0 else "0%",
-                "font_size": font_size if burn_subtitles else None
-            } if burn_subtitles else None,
-            "files_created": {
-                "clips_created": len(final_clip_paths),
-                "final_clip_paths": final_clip_paths,
-                "azure_clips_info": azure_clips_info,
-                "thumbnails": thumbnail_info,
-                "clip_type": "vertical" if create_vertical else "horizontal",
-                "has_subtitles": burn_subtitles and subtitled_count > 0
-            },
-            "azure_storage_info": {
-                "clips_uploaded_to_azure": azure_uploads_successful,
-                "total_clips": len(successful_results),
-                "azure_upload_success_rate": f"{(azure_uploads_successful/len(successful_results)*100):.1f}%" if len(successful_results) > 0 else "0%",
-                "storage_strategy": "azure_primary",
-                "azure_containers_used": ["clips", "thumbnails"],
-                "temp_segment_cleanup": "completed"
-            },
-            "failed_segments": failed_results if failed_results else None
+            "segments_info": {
+                "total_segments": len(viral_segments),
+                "processed_segments": len(azure_urls)
+            }
         }
         
-        print(f"\n🎉 OPTIMIZED WORKFLOW COMPLETED (Following User Requirements)!")
-        print(f"✅ 1. Transcript extracted first")
-        print(f"✅ 2. Gemini AI analysis with timecodes")
-        print(f"✅ 3. Smart segment downloads (saved {savings_estimate['bandwidth_savings_percentage']:.1f}% bandwidth)")
-        print(f"✅ 4. Horizontal → vertical cropping: {create_vertical}")
-        print(f"✅ 5. Subtitle burning: {burn_subtitles} ({subtitled_count}/{len(successful_results)} clips)")
-        print(f"✅ 6. Azure uploads: {azure_uploads_successful} clips, temp files cleaned")
-        
-        # Mark as completed
-        with workflow_task_lock:
-            workflow_tasks[task_id].update({
-                "status": "completed",
-                "progress": 100,
-                "message": f"Optimized workflow completed! {len(viral_segments)} segments → {len(successful_results)} clips → {azure_uploads_successful} Azure uploads",
-                "result": result,
-                "completed_at": datetime.now()
-            })
-        
-        return result
-        
     except Exception as e:
-        print(f"❌ Optimized workflow failed: {str(e)}")
-        # Mark as failed
-        with workflow_task_lock:
-            workflow_tasks[task_id].update({
-                "status": "failed",
-                "error": str(e),
-                "message": f"Optimized workflow failed: {str(e)}",
-                "completed_at": datetime.now()
-            })
+        print(f"❌ Workflow failed: {str(e)}")
         raise e
 
 async def _process_video_workflow_fast_async(
