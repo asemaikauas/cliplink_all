@@ -22,7 +22,7 @@ export default function App() {
   }
 
   // Protected routes - require authentication
-  if (path === '/dashboard' || path === '/clips' || path.startsWith('/clips/')) {
+  if (path === '/dashboard' || path === '/clips' || path.startsWith('/clips/') || path === '/process') {
     if (!isSignedIn) {
       // Redirect to landing page if not authenticated
       window.location.href = '/';

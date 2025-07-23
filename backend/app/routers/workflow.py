@@ -42,7 +42,7 @@ from app.services.segment_downloader import get_segment_download_service
 
 # Import authentication and database
 from ..auth import get_current_user
-from ..database import get_db
+from ..database import get_db, AsyncSessionLocal
 from ..models import User, Video, VideoStatus, Clip
 
 router = APIRouter()
@@ -1472,133 +1472,133 @@ async def _process_comprehensive_with_db_updates(
     """
     Process comprehensive workflow and update database records for authenticated user
     """
-    from ..database import get_db_session
+    from ..database import AsyncSessionLocal
     from sqlalchemy import select
     
-    db = get_db_session()
-    
-    try:
-        print(f"🚀 Starting comprehensive workflow for user {user_id}, video {video_record_id}")
-        
-        # Get the video record
-        query = select(Video).where(Video.id == video_record_id)
-        result = await db.execute(query)
-        video_record = result.scalar_one_or_none()
-        
-        if not video_record:
-            raise Exception(f"Video record {video_record_id} not found")
-        
-        # Update task with video record info
-        with workflow_task_lock:
-            workflow_tasks[task_id]["video_record_id"] = video_record_id
-            workflow_tasks[task_id]["user_id"] = user_id
-        
-        # Call the existing comprehensive workflow
-        workflow_result = await _process_video_workflow_async(
-            task_id=task_id,
-            youtube_url=youtube_url,
-            quality=quality,
-            create_vertical=create_vertical,
-            smoothing_strength=smoothing_strength,
-            burn_subtitles=burn_subtitles,
-            font_size=font_size,
-            export_codec=export_codec,
-            enable_audio_sync_fix=enable_audio_sync_fix,
-            audio_offset_ms=audio_offset_ms
-        )
-        
-        # Update video status and save clips to database
-        if workflow_result.get("success"):
-            video_record.status = VideoStatus.DONE
+    # Use proper async session context manager
+    async with AsyncSessionLocal() as db:
+        try:
+            print(f"🚀 Starting comprehensive workflow for user {user_id}, video {video_record_id}")
             
-            # Extract Azure URLs and segment info from workflow result
-            azure_urls = workflow_result.get("azure_urls", [])
+            # Get the video record
+            query = select(Video).where(Video.id == video_record_id)
+            result = await db.execute(query)
+            video_record = result.scalar_one_or_none()
             
-            # Get segments from task result if available
-            viral_segments = []
+            if not video_record:
+                raise Exception(f"Video record {video_record_id} not found")
+            
+            # Update task with video record info
             with workflow_task_lock:
-                task_result = workflow_tasks.get(task_id, {})
-                if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
-                    viral_segments = task_result["result"]["analysis_results"]["segments"]
+                workflow_tasks[task_id]["video_record_id"] = video_record_id
+                workflow_tasks[task_id]["user_id"] = user_id
             
-            print(f"📊 Saving {len(azure_urls)} clips to database for user {user_id}")
+            # Call the existing comprehensive workflow
+            workflow_result = await _process_video_workflow_async(
+                task_id=task_id,
+                youtube_url=youtube_url,
+                quality=quality,
+                create_vertical=create_vertical,
+                smoothing_strength=smoothing_strength,
+                burn_subtitles=burn_subtitles,
+                font_size=font_size,
+                export_codec=export_codec,
+                enable_audio_sync_fix=enable_audio_sync_fix,
+                audio_offset_ms=audio_offset_ms
+            )
             
-            # Create clip records with Azure blob URLs
-            clips_created = 0
-            for i, azure_url in enumerate(azure_urls):
-                try:
-                    # Get segment timing info (fallback to defaults if not available)
-                    segment_data = viral_segments[i] if i < len(viral_segments) else {}
-                    start_time = segment_data.get("start", 0.0)
-                    end_time = segment_data.get("end", 60.0)
-                    duration = end_time - start_time
-                    
-                    # Create clip record with Azure blob URL
-                    clip_record = Clip(
-                        video_id=video_record.id,
-                        blob_url=azure_url,  # Azure blob URL
-                        thumbnail_url=None,  # Could be added later
-                        start_time=start_time,
-                        end_time=end_time,
-                        duration=duration,
-                        file_size=None  # Could be added later from Azure metadata
-                    )
-                    
-                    db.add(clip_record)
-                    clips_created += 1
-                    print(f"   ✅ Clip {i+1}: {azure_url}")
-                    
-                except Exception as e:
-                    print(f"   ❌ Failed to save clip {i+1} to database: {str(e)}")
-                    continue
+            # Update video status and save clips to database
+            if workflow_result.get("success"):
+                video_record.status = VideoStatus.DONE
+                
+                # Extract Azure URLs and segment info from workflow result
+                azure_urls = workflow_result.get("azure_urls", [])
+                
+                # Get segments from task result if available
+                viral_segments = []
+                with workflow_task_lock:
+                    task_result = workflow_tasks.get(task_id, {})
+                    if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
+                        viral_segments = task_result["result"]["analysis_results"]["segments"]
+                
+                print(f"📊 Saving {len(azure_urls)} clips to database for user {user_id}")
+                
+                # Create clip records with Azure blob URLs
+                clips_created = 0
+                for i, azure_url in enumerate(azure_urls):
+                    try:
+                        # Get segment timing info (fallback to defaults if not available)
+                        segment_data = viral_segments[i] if i < len(viral_segments) else {}
+                        start_time = segment_data.get("start", 0.0)
+                        end_time = segment_data.get("end", 60.0)
+                        duration = end_time - start_time
+                        
+                        # Create clip record with Azure blob URL
+                        clip_record = Clip(
+                            video_id=video_record.id,
+                            blob_url=azure_url,  # Azure blob URL
+                            thumbnail_url=None,  # Could be added later
+                            start_time=start_time,
+                            end_time=end_time,
+                            duration=duration,
+                            file_size=None  # Could be added later from Azure metadata
+                        )
+                        
+                        db.add(clip_record)
+                        clips_created += 1
+                        print(f"   ✅ Clip {i+1}: {azure_url}")
+                        
+                    except Exception as e:
+                        print(f"   ❌ Failed to save clip {i+1} to database: {str(e)}")
+                        continue
+                
+                await db.commit()
+                print(f"✅ Successfully saved {clips_created} clips to database for user {user_id}")
+                
+                # Update task status to completed
+                with workflow_task_lock:
+                    workflow_tasks[task_id].update({
+                        "status": "completed",
+                        "progress": 100,
+                        "message": f"✅ Processing complete! {clips_created} clips created and saved.",
+                        "clips_created": clips_created,
+                        "completed_at": datetime.now()
+                    })
+                
+            else:
+                # Update video status to failed
+                video_record.status = VideoStatus.FAILED
+                await db.commit()
+                print(f"❌ Video processing failed for user {user_id}")
+                
+                # Update task status
+                with workflow_task_lock:
+                    workflow_tasks[task_id].update({
+                        "status": "failed",
+                        "error": "Workflow processing failed"
+                    })
+        
+        except Exception as e:
+            print(f"❌ Database update failed for user {user_id}: {str(e)}")
             
-            await db.commit()
-            print(f"✅ Successfully saved {clips_created} clips to database for user {user_id}")
-            
-            # Update task status to completed
-            with workflow_task_lock:
-                workflow_tasks[task_id].update({
-                    "status": "completed",
-                    "progress": 100,
-                    "message": f"✅ Processing complete! {clips_created} clips created and saved.",
-                    "clips_created": clips_created,
-                    "completed_at": datetime.now()
-                })
-            
-        else:
-            # Update video status to failed
-            video_record.status = VideoStatus.FAILED
-            await db.commit()
-            print(f"❌ Video processing failed for user {user_id}")
+            # Try to update video status to failed if we have a record
+            try:
+                if 'video_record' in locals():
+                    video_record.status = VideoStatus.FAILED
+                    await db.commit()
+            except:
+                pass
             
             # Update task status
             with workflow_task_lock:
-                workflow_tasks[task_id].update({
-                    "status": "failed",
-                    "error": "Workflow processing failed"
-                })
-    
-    except Exception as e:
-        print(f"❌ Database update failed for user {user_id}: {str(e)}")
-        
-        # Try to update video status to failed if we have a record
-        try:
-            if 'video_record' in locals():
-                video_record.status = VideoStatus.FAILED
-                await db.commit()
-        except:
-            pass
-        
-        # Update task status
-        with workflow_task_lock:
-            if task_id in workflow_tasks:
-                workflow_tasks[task_id].update({
-                    "status": "failed",
-                    "error": f"Database update failed: {str(e)}"
-                })
-    
-    finally:
-        await db.close()
+                if task_id in workflow_tasks:
+                    workflow_tasks[task_id].update({
+                        "status": "failed",
+                        "error": f"Database update failed: {str(e)}"
+                    })
+            
+            # Re-raise the exception to ensure proper error handling
+            raise
 
 @router.post("/process-fast-async")
 async def process_fast_workflow_async(request: FastWorkflowRequest):
