@@ -230,9 +230,9 @@ class YouTubeService:
             # Call Apify YouTube Video Downloader Actor
             logger.info("🔄 Calling Apify YouTube Video Downloader...")
             run_input = {
-                "startUrls": [{"url": url}],
-                "quality": apify_quality,
-                "maxConcurrency": 1
+                "urls": [url],
+                "resolution": apify_quality,
+                "max_concurrent": 1
             }
             
             # Run the Apify Actor
