@@ -399,6 +399,100 @@ async def _process_single_viral_segment_parallel(
         print(traceback.format_exc())
         return {"success": False, "error": str(e), "clip_path": None}
 
+async def _ffmpeg_vertical_crop(input_path: Path, output_path: Path) -> bool:
+    """
+    Pure FFmpeg vertical cropping (9:16) with audio preservation
+    No MoviePy dependency - faster and more reliable
+    """
+    try:
+        # Get video dimensions first
+        probe_cmd = [
+            'ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams',
+            '-select_streams', 'v:0', str(input_path)
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *probe_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            print(f"❌ Failed to probe video dimensions: {stderr.decode()}")
+            return False
+        
+        import json
+        data = json.loads(stdout.decode())
+        streams = data.get('streams', [])
+        
+        if not streams:
+            print(f"❌ No video streams found")
+            return False
+        
+        width = streams[0].get('width', 1920)
+        height = streams[0].get('height', 1080)
+        
+        # Calculate crop parameters for 9:16 aspect ratio
+        target_aspect = 9 / 16
+        current_aspect = width / height
+        
+        if current_aspect > target_aspect:
+            # Video is wider than 9:16, crop horizontally
+            crop_width = int(height * target_aspect)
+            crop_height = height
+            crop_x = (width - crop_width) // 2  # Center crop
+            crop_y = 0
+        else:
+            # Video is taller than 9:16, crop vertically  
+            crop_width = width
+            crop_height = int(width / target_aspect)
+            crop_x = 0
+            crop_y = (height - crop_height) // 2  # Center crop
+        
+        # Ensure even dimensions for video encoding
+        if crop_width % 2 != 0:
+            crop_width -= 1
+        if crop_height % 2 != 0:
+            crop_height -= 1
+        
+        print(f"🎬 Cropping {width}x{height} to {crop_width}x{crop_height} (crop at {crop_x},{crop_y})")
+        
+        # Pure FFmpeg command for vertical cropping with audio preservation
+        cmd = [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error',
+            '-i', str(input_path),
+            '-vf', f'crop={crop_width}:{crop_height}:{crop_x}:{crop_y}',
+            '-c:a', 'copy',  # Copy audio without re-encoding
+            '-preset', 'fast',  # Fast encoding preset
+            '-crf', '23',  # Good quality
+            str(output_path),
+            '-y'
+        ]
+        
+        # Execute FFmpeg cropping
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0 and output_path.exists():
+            file_size = output_path.stat().st_size / (1024 * 1024)
+            print(f"✅ FFmpeg vertical crop successful ({file_size:.1f} MB)")
+            return True
+        else:
+            error_msg = stderr.decode() if stderr else "Unknown FFmpeg error"
+            print(f"❌ FFmpeg vertical crop failed: {error_msg}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Exception in FFmpeg vertical crop: {str(e)}")
+        return False
+
 async def _process_video_workflow_async(
     task_id: str,
     youtube_url: str,
@@ -455,9 +549,8 @@ async def _process_video_workflow_async(
         file_size_mb = video_path.stat().st_size / (1024*1024)
         _update_workflow_progress(task_id, "download", 50, f"Analysis completed: {file_size_mb:.1f} MB", {"video_path": str(video_path)})
         
-        # STEP 4: Direct Vertical Cropping
-        _update_workflow_progress(task_id, "vertical_crop", 55, f"Processing {len(viral_segments)}  clips...")
-        from app.services.vertical_crop_async import crop_video_to_vertical_async
+        # STEP 4: Direct Vertical Cropping (Pure FFmpeg - No MoviePy)
+        _update_workflow_progress(task_id, "vertical_crop", 55, f"Processing {len(viral_segments)} clips...")
         from app.services.youtube import create_clip_with_direct_ffmpeg
         
         vertical_clips = []
@@ -481,23 +574,17 @@ async def _process_video_workflow_async(
                 print(f"❌ Failed to cut segment {i+1}")
                 continue
             
-            # Now apply vertical cropping to the horizontal segment
+            # Now apply vertical cropping using pure FFmpeg (no MoviePy)
             vertical_clip_path = video_path.parent / f"{safe_title}_vertical_{i+1}.mp4"
             
-            crop_result = await crop_video_to_vertical_async(
-                input_path=horizontal_clip_path,
-                output_path=vertical_clip_path,
-                use_speaker_detection=True,
-                use_smart_scene_detection=False,  # Disable - not needed for individual segments
-                smoothing_strength=smoothing_strength,
-                task_id=f"{task_id}_seg_{i+1}"
-            )
+            # Use FFmpeg directly for vertical cropping with center crop
+            crop_success = await _ffmpeg_vertical_crop(horizontal_clip_path, vertical_clip_path)
             
-            if crop_result.get("success"):
+            if crop_success:
                 vertical_clips.append(vertical_clip_path)
                 print(f"✅ Vertical clip {i+1} created: {vertical_clip_path.name}")
             else:
-                print(f"❌ Failed to create vertical clip {i+1}: {crop_result.get('error')}")
+                print(f"❌ Failed to create vertical clip {i+1}")
             
             # Clean up horizontal clip
             if horizontal_clip_path.exists():
