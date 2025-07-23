@@ -458,20 +458,37 @@ async def _process_video_workflow_async(
         # STEP 4: Direct Vertical Cropping
         _update_workflow_progress(task_id, "vertical_crop", 55, f"Processing {len(viral_segments)}  clips...")
         from app.services.vertical_crop_async import crop_video_to_vertical_async
+        from app.services.youtube import create_clip_with_direct_ffmpeg
         
         vertical_clips = []
         for i, segment in enumerate(viral_segments):
             safe_title = youtube_service._sanitize_filename(segment.get("title", f"segment_{i+1}"))
-            vertical_clip_path = video_path.parent / f"{safe_title}_vertical_{i+1}.mp4"
+            
+            # First, cut horizontal segment from the full video
+            horizontal_clip_path = video_path.parent / f"{safe_title}_horizontal_{i+1}.mp4"
             
             print(f"🎬 Processing segment {i+1}/{len(viral_segments)}: {segment.get('start')}s to {segment.get('end')}s")
             
+            # Cut the segment using FFmpeg
+            success = create_clip_with_direct_ffmpeg(
+                video_path, 
+                segment.get('start'), 
+                segment.get('end'), 
+                horizontal_clip_path
+            )
+            
+            if not success or not horizontal_clip_path.exists():
+                print(f"❌ Failed to cut segment {i+1}")
+                continue
+            
+            # Now apply vertical cropping to the horizontal segment
+            vertical_clip_path = video_path.parent / f"{safe_title}_vertical_{i+1}.mp4"
+            
             crop_result = await crop_video_to_vertical_async(
-                input_path=video_path,
+                input_path=horizontal_clip_path,
                 output_path=vertical_clip_path,
-                start_time=segment.get('start'),
-                end_time=segment.get('end'),
                 use_speaker_detection=True,
+                use_smart_scene_detection=False,  # Disable - not needed for individual segments
                 smoothing_strength=smoothing_strength,
                 task_id=f"{task_id}_seg_{i+1}"
             )
@@ -481,6 +498,10 @@ async def _process_video_workflow_async(
                 print(f"✅ Vertical clip {i+1} created: {vertical_clip_path.name}")
             else:
                 print(f"❌ Failed to create vertical clip {i+1}: {crop_result.get('error')}")
+            
+            # Clean up horizontal clip
+            if horizontal_clip_path.exists():
+                horizontal_clip_path.unlink()
         
         _update_workflow_progress(task_id, "vertical_crop", 70, f"✅ Created {len(vertical_clips)} vertical clips")
         
