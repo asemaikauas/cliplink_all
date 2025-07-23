@@ -610,7 +610,7 @@ async def _process_video_workflow_async(
             print(f"🔤 Adding subtitles to clip {i+1}/{len(vertical_clips)}")
             
             # Generate subtitles
-            subtitle_data = await transcribe(str(vertical_clip))
+            subtitle_data = await _run_blocking_task(transcribe, str(vertical_clip))
             if subtitle_data and subtitle_data.get("segments"):
                 srt_data = convert_groq_to_subtitles(subtitle_data)
                 
@@ -1233,7 +1233,7 @@ async def _process_single_segment_optimized(
                 subtitled_clip_path = processing_file_path.parent / f"{safe_title}_subtitled.mp4"
                 
                 # Use Groq to transcribe the segment
-                audio_transcription = await transcribe(str(processing_file_path))
+                audio_transcription = await _run_blocking_task(transcribe, str(processing_file_path))
                 if audio_transcription and 'segments' in audio_transcription:
                     subtitle_data = convert_groq_to_subtitles(audio_transcription)
                     
