@@ -633,13 +633,17 @@ async def _process_video_workflow_async(
                     export_codec=export_codec
                 )
                 
-                if burn_result.get("success"):
+                if burn_result and subtitled_path.exists():
                     final_clips.append(subtitled_path)
                     print(f"✅ Subtitles added to clip {i+1}")
                     
                     # Clean up vertical clip without subtitles
                     if vertical_clip.exists():
                         vertical_clip.unlink()
+                else:
+                    print(f"❌ Failed to add subtitles to clip {i+1}")
+                    # Keep the vertical clip if subtitle burning failed
+                    final_clips.append(vertical_clip)
         
         _update_workflow_progress(task_id, "subtitles", 85, f"✅ Added subtitles to {len(final_clips)} clips")
         
@@ -1265,15 +1269,17 @@ async def _process_single_segment_optimized(
                         export_codec=export_codec
                     )
                     
-                    if burn_result.get("success"):
-                        final_clip_path = subtitled_clip_path
-                        print(f"   ✅ Subtitles burned successfully")
+                    if burn_result and subtitled_clip_path.exists():
+                        final_clips.append(subtitled_clip_path)
+                        print(f"✅ Subtitles added to clip {i+1}")
                         
-                        # Clean up non-subtitled version
-                        if processing_file_path.exists() and processing_file_path != subtitled_clip_path:
-                            processing_file_path.unlink()
+                        # Clean up vertical clip without subtitles
+                        if vertical_clip_path.exists():
+                            vertical_clip_path.unlink()
                     else:
-                        print(f"   ⚠️ Subtitle burning failed: {burn_result.get('error')}")
+                        print(f"❌ Failed to add subtitles to clip {i+1}")
+                        # Keep the vertical clip if subtitle burning failed
+                        final_clips.append(vertical_clip)
                 else:
                     print(f"   ⚠️ No transcription data available for subtitles")
                     
