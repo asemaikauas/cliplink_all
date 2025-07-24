@@ -7,7 +7,7 @@ interface Clip {
     start_time: number;
     end_time: number;
     duration: number;
-    s3_url: string;
+    blob_url: string;
     thumbnail_url?: string;
     clip_id?: string;
 }
@@ -90,7 +90,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
     const handleDownload = () => {
         try {
             const link = document.createElement('a');
-            link.href = clip.s3_url;
+            link.href = clip.blob_url;
             link.download = `${clip.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
             document.body.appendChild(link);
             link.click();
@@ -124,7 +124,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
                     <div className="aspect-[9/16]">
                         <video
                             ref={videoRef}
-                            src={clip.s3_url}
+                            src={clip.blob_url}
                             className="w-full h-full object-contain"
                             preload="metadata"
                             onLoadedMetadata={handleLoadedMetadata}

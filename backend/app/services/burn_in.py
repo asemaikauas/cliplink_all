@@ -196,7 +196,21 @@ class BurnInRenderer:
             video_codec = "libx264" if export_codec == "h264" else f"lib{export_codec}"
             
             # Escape the SRT path for FFmpeg (handle spaces and special characters)
-            escaped_srt_path = srt_path.replace("\\", "\\\\").replace(":", "\\:")
+            # Also ensure the path is clean ASCII
+            import unicodedata
+            import re
+            
+            # First normalize and clean the path
+            try:
+                # Normalize path and convert to ASCII
+                clean_srt_path = unicodedata.normalize('NFKD', srt_path)
+                clean_srt_path = clean_srt_path.encode('ascii', 'ignore').decode('ascii')
+            except Exception:
+                # Fallback: use original path
+                clean_srt_path = srt_path
+            
+            # Escape for FFmpeg
+            escaped_srt_path = clean_srt_path.replace("\\", "\\\\").replace(":", "\\:")
             
             cmd = [
                 "ffmpeg",
@@ -215,14 +229,19 @@ class BurnInRenderer:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
+                text=False,  # Use binary mode to avoid encoding issues
                 timeout=3600  # 1 hour timeout for long videos
             )
             
             if result.returncode != 0:
                 error_msg = f"FFmpeg failed with return code {result.returncode}"
                 if result.stderr:
-                    error_msg += f"\nSTDERR: {result.stderr}"
+                    # Safely decode stderr with error handling
+                    try:
+                        stderr_text = result.stderr.decode('utf-8', errors='replace')
+                    except Exception:
+                        stderr_text = str(result.stderr)
+                    error_msg += f"\nSTDERR: {stderr_text}"
                 raise BurnInError(error_msg)
             
             # Verify output file was created

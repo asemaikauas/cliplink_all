@@ -32,7 +32,7 @@ interface Clip {
     start_time: number;
     end_time: number;
     duration: number;
-    s3_url: string;
+    blob_url: string;
     thumbnail_url?: string;
     clip_id?: string;
 }
@@ -171,7 +171,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                     start_time: clip.start_time,
                                     end_time: clip.end_time,
                                     duration: clip.duration,
-                                    s3_url: clip.s3_url, // Use the SAS URL from backend
+                                    blob_url: clip.blob_url, // Use the SAS URL from backend
                                     thumbnail_url: clip.thumbnail_url,
                                     clip_id: clip.id
                                 });
@@ -260,7 +260,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                         start_time: startTime,
                                         end_time: endTime,
                                         duration: duration,
-                                        s3_url: path,
+                                        blob_url: path,
                                         thumbnail_url: thumbnail?.thumbnail_path ?
                                             `${config.API_BASE_URL}/${thumbnail.thumbnail_path}` : null,
                                         clip_id: thumbnail?.clip_id
@@ -560,7 +560,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const handleDownload = (clip: Clip) => {
         try {
             const link = document.createElement('a');
-            link.href = clip.s3_url;
+            link.href = clip.blob_url;
             link.download = `${clip.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
             document.body.appendChild(link);
             link.click();
@@ -801,7 +801,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
                                     <div className="text-xs text-gray-500 space-y-1">
                                         <div>Time: {formatTime(clip.start_time)} - {formatTime(clip.end_time)}</div>
-                                        {clip.s3_url.includes('subtitled_') && (
+                                        {clip.blob_url.includes('subtitled_') && (
                                             <div className="text-blue-600 font-medium">✨ With subtitles</div>
                                         )}
                                     </div>

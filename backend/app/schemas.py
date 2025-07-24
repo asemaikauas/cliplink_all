@@ -28,6 +28,7 @@ class ClipResponse(BaseModel):
     video_id: UUID
     blob_url: str = Field(description="Azure Blob Storage URL")
     thumbnail_url: Optional[str] = Field(None, description="Thumbnail image URL")
+    title: Optional[str] = Field(None, description="Clip title")
     start_time: float = Field(description="Start time in seconds")
     end_time: float = Field(description="End time in seconds")
     duration: float = Field(description="Duration in seconds")

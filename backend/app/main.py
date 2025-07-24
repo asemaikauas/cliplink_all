@@ -270,12 +270,12 @@ async def get_video_details(
                         blob_url=clip.blob_url,
                         expiry_hours=2
                     )
-                    clip_dict["s3_url"] = sas_url  # Frontend expects s3_url field
+                    clip_dict["blob_url"] = sas_url  # VideoResponse expects blob_url field
                 except Exception as e:
                     print(f"Warning: Failed to generate SAS URL for clip {clip.id}: {str(e)}")
-                    clip_dict["s3_url"] = clip.blob_url  # Fallback to original URL
+                    clip_dict["blob_url"] = clip.blob_url  # Fallback to original URL
             else:
-                clip_dict["s3_url"] = None
+                clip_dict["blob_url"] = None
             
             # Generate SAS URL for the thumbnail (2-hour expiry)
             if clip.thumbnail_url:

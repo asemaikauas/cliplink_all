@@ -317,7 +317,12 @@ class AudioSyncManager:
                 logger.info("✅ Subtitle burn with sync preservation completed")
                 return True
             else:
-                logger.error(f"❌ Subtitle burn failed: {stderr.decode()}")
+                # Safely decode stderr with error handling
+                try:
+                    stderr_text = stderr.decode('utf-8', errors='replace')
+                except Exception:
+                    stderr_text = str(stderr)
+                logger.error(f"❌ Subtitle burn failed: {stderr_text}")
                 return False
                 
         except Exception as e:

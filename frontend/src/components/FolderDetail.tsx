@@ -5,7 +5,7 @@ import { apiUrl } from '../config';
 
 interface Clip {
     id: string;
-    s3_url: string;
+    blob_url: string;
     title?: string;
     start_time: number;
     end_time: number;
