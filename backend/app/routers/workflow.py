@@ -1561,39 +1561,69 @@ async def _process_comprehensive_with_db_updates_async(
             
             # Update video status and save clips to database
             if workflow_result.get("success"):
+                # Update video title with the real title from YouTube
+                video_info = workflow_result.get("video_info", {})
+                if video_info.get("title") and video_info["title"] != "Unknown Title":
+                    video_record.title = video_info["title"]
+                    print(f"📝 Updated video title: {video_info['title']}")
+                
                 video_record.status = VideoStatus.DONE
                 
                 # Extract Azure URLs and segment info from workflow result
                 azure_urls = workflow_result.get("azure_urls", [])
                 
-                # Get segments from task result if available
+                # Get segments from the workflow result - check multiple possible locations
                 viral_segments = []
-                with workflow_task_lock:
-                    task_result = workflow_tasks.get(task_id, {})
-                    if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
-                        viral_segments = task_result["result"]["analysis_results"]["segments"]
+                
+                # First try: analysis_results.segments (from gemini analysis)
+                analysis_results = workflow_result.get("analysis_results", {})
+                if analysis_results.get("segments"):
+                    viral_segments = analysis_results["segments"]
+                    print(f"📊 Found {len(viral_segments)} segments from analysis_results")
+                
+                # Second try: segments_info (from comprehensive workflow)
+                elif workflow_result.get("segments_info", {}).get("segments"):
+                    viral_segments = workflow_result["segments_info"]["segments"] 
+                    print(f"📊 Found {len(viral_segments)} segments from segments_info")
+                
+                # Third try: get from task result
+                else:
+                    with workflow_task_lock:
+                        task_result = workflow_tasks.get(task_id, {})
+                        if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
+                            viral_segments = task_result["result"]["analysis_results"]["segments"]
+                            print(f"📊 Found {len(viral_segments)} segments from task result")
                 
                 print(f"📊 Saving {len(azure_urls)} clips to database for user {user_id}")
+                print(f"🎯 Segments data: {len(viral_segments)} segments available")
                 
                 # Create clip records with Azure blob URLs
                 clips_created = 0
                 for i, azure_url in enumerate(azure_urls):
                     try:
-                        # Get segment timing info (fallback to defaults if not available)
-                        segment_data = viral_segments[i] if i < len(viral_segments) else {}
-                        start_time = segment_data.get("start", 0.0)
-                        end_time = segment_data.get("end", 60.0)
-                        duration = end_time - start_time
+                        # Get segment timing info (with better fallbacks)
+                        if i < len(viral_segments):
+                            segment_data = viral_segments[i]
+                            start_time = segment_data.get("start", 0.0)
+                            end_time = segment_data.get("end", 60.0) 
+                            duration = segment_data.get("duration") or (end_time - start_time)
+                            print(f"   📍 Clip {i+1}: {start_time}s - {end_time}s ({duration}s)")
+                        else:
+                            # Fallback if segment data is missing
+                            start_time = i * 60.0  # Assume 60s clips spaced out
+                            end_time = (i + 1) * 60.0
+                            duration = 60.0
+                            print(f"   ⚠️  Clip {i+1}: Using fallback timing")
                         
                         # Create clip record with Azure blob URL
                         clip_record = Clip(
                             video_id=video_record.id,
                             blob_url=azure_url,  # Azure blob URL
-                            thumbnail_url=None,  # Could be added later
+                            thumbnail_url=None,  # TODO: Extract from workflow result
                             start_time=start_time,
                             end_time=end_time,
                             duration=duration,
-                            file_size=None  # Could be added later from Azure metadata
+                            file_size=None  # TODO: Extract from Azure metadata
                         )
                         
                         db.add(clip_record)
