@@ -1459,21 +1459,19 @@ async def process_comprehensive_workflow_async(
         try:
             print(f"🚀 Starting background processing...")
             workflow_executor.submit(
-                asyncio.run,
-                _process_comprehensive_with_db_updates(
-                    task_id=task_id,
-                    video_record_id=str(video_record.id),
-                    user_id=str(current_user.id),
-                    youtube_url=request.youtube_url,
-                    quality=request.quality or "best",
-                    create_vertical=request.create_vertical if request.create_vertical is not None else True,
-                    smoothing_strength=request.smoothing_strength or "very_high",
-                    burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
-                    font_size=request.font_size or 15,
-                    export_codec=request.export_codec or "h264",
-                    enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
-                    audio_offset_ms=request.audio_offset_ms or 0.0
-                )
+                _process_comprehensive_with_db_updates_sync,
+                task_id=task_id,
+                video_record_id=str(video_record.id),
+                user_id=str(current_user.id),
+                youtube_url=request.youtube_url,
+                quality=request.quality or "best",
+                create_vertical=request.create_vertical if request.create_vertical is not None else True,
+                smoothing_strength=request.smoothing_strength or "very_high",
+                burn_subtitles=request.burn_subtitles if request.burn_subtitles is not None else True,
+                font_size=request.font_size or 32,
+                export_codec=request.export_codec or "libx264",
+                enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
+                audio_offset_ms=request.audio_offset_ms or 0
             )
             print(f"✅ Background task submitted successfully")
         except Exception as e:
@@ -1509,7 +1507,7 @@ async def process_comprehensive_workflow_async(
         print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
 
-async def _process_comprehensive_with_db_updates(
+def _process_comprehensive_with_db_updates_sync(
     task_id: str,
     video_record_id: str,
     user_id: str,
@@ -1518,8 +1516,42 @@ async def _process_comprehensive_with_db_updates(
     create_vertical: bool,
     smoothing_strength: str,
     burn_subtitles: bool = True,
-    font_size: int = 15,
-    export_codec: str = "h264",
+    font_size: int = 32,
+    export_codec: str = "libx264",
+    enable_audio_sync_fix: bool = True,
+    audio_offset_ms: float = 0.0
+):
+    """
+    Synchronous wrapper for database updates in background thread
+    """
+    # Run the async workflow in a new event loop
+    asyncio.run(_process_comprehensive_with_db_updates_async(
+        task_id=task_id,
+        video_record_id=video_record_id,
+        user_id=user_id,
+        youtube_url=youtube_url,
+        quality=quality,
+        create_vertical=create_vertical,
+        smoothing_strength=smoothing_strength,
+        burn_subtitles=burn_subtitles,
+        font_size=font_size,
+        export_codec=export_codec,
+        enable_audio_sync_fix=enable_audio_sync_fix,
+        audio_offset_ms=audio_offset_ms
+    ))
+
+
+async def _process_comprehensive_with_db_updates_async(
+    task_id: str,
+    video_record_id: str,
+    user_id: str,
+    youtube_url: str,
+    quality: str,
+    create_vertical: bool,
+    smoothing_strength: str,
+    burn_subtitles: bool = True,
+    font_size: int = 32,
+    export_codec: str = "libx264",
     enable_audio_sync_fix: bool = True,
     audio_offset_ms: float = 0.0
 ):
@@ -1629,30 +1661,30 @@ async def _process_comprehensive_with_db_updates(
                 with workflow_task_lock:
                     workflow_tasks[task_id].update({
                         "status": "failed",
-                        "error": "Workflow processing failed"
+                        "progress": 100,
+                        "message": "❌ Processing failed.",
+                        "completed_at": datetime.now()
                     })
-        
+                
         except Exception as e:
             print(f"❌ Database update failed for user {user_id}: {str(e)}")
             
-            # Try to update video status to failed if we have a record
+            # Update video status to failed
             try:
                 if 'video_record' in locals():
                     video_record.status = VideoStatus.FAILED
                     await db.commit()
-            except:
-                pass
+            except Exception as db_error:
+                print(f"❌ Failed to update video status to failed: {str(db_error)}")
             
             # Update task status
             with workflow_task_lock:
-                if task_id in workflow_tasks:
-                    workflow_tasks[task_id].update({
-                        "status": "failed",
-                        "error": f"Database update failed: {str(e)}"
-                    })
-            
-            # Re-raise the exception to ensure proper error handling
-            raise
+                workflow_tasks[task_id].update({
+                    "status": "failed",
+                    "progress": 100,
+                    "message": f"❌ Database update failed: {str(e)}",
+                    "completed_at": datetime.now()
+                })
 
 @router.post("/process-fast-async")
 async def process_fast_workflow_async(request: FastWorkflowRequest):
