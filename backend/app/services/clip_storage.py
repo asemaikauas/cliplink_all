@@ -39,7 +39,8 @@ class ClipStorageService:
         start_time: float,
         end_time: float,
         db: AsyncSession,
-        thumbnail_path: Optional[str] = None
+        thumbnail_path: Optional[str] = None,
+        title: Optional[str] = None
     ) -> Clip:
         """
         Upload a video clip to Azure Blob Storage and save metadata to database
@@ -103,6 +104,7 @@ class ClipStorageService:
                 video_id=video_id,
                 blob_url=clip_blob_url,
                 thumbnail_url=thumbnail_blob_url,
+                title=title,
                 start_time=start_time,
                 end_time=end_time,
                 duration=end_time - start_time,

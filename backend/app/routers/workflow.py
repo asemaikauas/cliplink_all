@@ -1293,9 +1293,20 @@ async def _process_single_segment_optimized(
             clip_storage = await get_clip_storage_service()
             
             blob_name = f"clips/{safe_title}_{segment_index+1}_{int(time.time())}.mp4"
-            azure_url = await clip_storage.upload_clip(
-                clip_file_path=str(final_clip_path),
-                blob_name=blob_name
+            azure_url = await clip_storage.azure_storage.upload_file(
+                file_path=str(final_clip_path),
+                blob_name=blob_name,
+                container_type="clips",
+                metadata={
+                    "segment_index": str(segment_index),
+                    "title": youtube_service._sanitize_filename(title),
+                    "start_time": str(segment_data.get("start", 0.0)),
+                    "end_time": str(segment_data.get("end", 60.0)),
+                    "duration": str(segment_data.get("end", 60.0) - segment_data.get("start", 0.0)),
+                    "has_subtitles": str(burn_subtitles and "subtitled" in str(final_clip_path)),
+                    "is_vertical": str(create_vertical),
+                    "created_at": datetime.utcnow().isoformat()
+                }
             )
             
             print(f"   ✅ Uploaded to Azure: {azure_url}")
@@ -1607,12 +1618,14 @@ async def _process_comprehensive_with_db_updates_async(
                             start_time = segment_data.get("start", 0.0)
                             end_time = segment_data.get("end", 60.0) 
                             duration = segment_data.get("duration") or (end_time - start_time)
-                            print(f"   📍 Clip {i+1}: {start_time}s - {end_time}s ({duration}s)")
+                            segment_title = segment_data.get("title", f"Clip {i+1}")
+                            print(f"   📍 Clip {i+1}: {start_time}s - {end_time}s ({duration}s) - '{segment_title}'")
                         else:
                             # Fallback if segment data is missing
                             start_time = i * 60.0  # Assume 60s clips spaced out
                             end_time = (i + 1) * 60.0
                             duration = 60.0
+                            segment_title = f"Clip {i+1}"
                             print(f"   ⚠️  Clip {i+1}: Using fallback timing")
                         
                         # Create clip record with Azure blob URL
@@ -1620,6 +1633,7 @@ async def _process_comprehensive_with_db_updates_async(
                             video_id=video_record.id,
                             blob_url=azure_url,  # Azure blob URL
                             thumbnail_url=None,  # TODO: Extract from workflow result
+                            title=segment_title,  # Save the actual segment title
                             start_time=start_time,
                             end_time=end_time,
                             duration=duration,
@@ -2078,12 +2092,14 @@ async def _process_video_with_db_updates(
                         start_time = segment_data.get("start", 0.0)
                         end_time = segment_data.get("end", 60.0)
                         duration = end_time - start_time
+                        segment_title = segment_data.get("title", f"Clip {i+1}")
                         
                         # Create clip record with Azure blob URL
                         clip_record = Clip(
                             video_id=video_record.id,
                             blob_url=azure_clip_data.get("azure_clip_url"),  # ← Azure blob URL!
                             thumbnail_url=azure_clip_data.get("azure_thumbnail_url"),  # ← Azure thumbnail URL!
+                            title=segment_title,  # Save the actual segment title
                             start_time=start_time,
                             end_time=end_time,
                             duration=duration,
