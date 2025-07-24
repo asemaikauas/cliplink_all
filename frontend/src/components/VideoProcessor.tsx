@@ -618,14 +618,17 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
     return (
         <div className="space-y-6">
+            {/* Section Header */}
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">🎬 Processing Progress</h2>
+                <p className="text-gray-600">Transform YouTube videos into viral vertical clips with AI-powered analysis</p>
+            </div>
+
             {/* URL Input Section */}
             <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Generate Clips from YouTube Video
                 </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                    🎯 Optimized for H.264: Using best available quality with intelligent fallback to avoid AV1 codec conversion issues.
-                </p>
 
                 <div className="flex gap-4">
                     <input

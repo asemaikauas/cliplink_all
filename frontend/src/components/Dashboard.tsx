@@ -162,7 +162,6 @@ const Dashboard = () => {
                             <h1 className="text-2xl font-bold text-gray-900">
                                 Welcome back{user?.firstName ? `, ${user.firstName}` : ''}! 👋
                             </h1>
-                            <p className="text-gray-600 mt-1">Manage your videos and clips</p>
                         </div>
                         {userStats && (
                             <div className="text-right">
@@ -176,23 +175,8 @@ const Dashboard = () => {
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Quick Actions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                    {/* Process New Video Card */}
-                    <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
-                        onClick={() => window.location.href = '/process'}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold mb-2">🎬 Process New Video</h3>
-                                <p className="text-blue-100 text-sm">Transform YouTube videos into viral vertical clips</p>
-                            </div>
-                            <div className="text-3xl">→</div>
-                        </div>
-                        <div className="mt-4 text-xs text-blue-100">
-                            ✨ AI-powered • 📱 Vertical format • 📝 Auto subtitles
-                        </div>
-                    </div>
-
+                {/* Your Videos and Quick Stats Section */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
                     {/* Your Videos Card */}
                     <div className="bg-white rounded-lg p-6 shadow-sm border cursor-pointer hover:shadow-md transition-shadow"
                         onClick={() => window.location.href = '/clips'}>
@@ -236,13 +220,15 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* Video Processor Component */}
-                <VideoProcessor
-                    initialUrl={pendingUrl}
-                />
+                {/* Video Processor Component - Processing Progress Section */}
+                <div className="mb-12">
+                    <VideoProcessor
+                        initialUrl={pendingUrl}
+                    />
+                </div>
 
-                {/* User Profile Info */}
-                <div className="bg-white overflow-hidden shadow rounded-lg">
+                {/* Account Information Section - Added larger margin top */}
+                <div className="bg-white overflow-hidden shadow rounded-lg mt-16">
                     <div className="px-4 py-5 sm:p-6">
                         <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
                             Account Information

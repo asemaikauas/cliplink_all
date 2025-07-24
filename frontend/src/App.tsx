@@ -48,15 +48,6 @@ export default function App() {
                     Dashboard
                   </button>
                   <button
-                    onClick={() => window.location.href = '/process'}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${path === '/process'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                      }`}
-                  >
-                    Process Video
-                  </button>
-                  <button
                     onClick={() => window.location.href = '/clips'}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${path === '/clips' || path.startsWith('/clips/')
                       ? 'bg-blue-100 text-blue-700'
