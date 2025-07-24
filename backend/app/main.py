@@ -219,10 +219,11 @@ async def get_video_details(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get detailed information about a specific video
+    Get detailed information about a specific video with secure SAS URLs
     
     Returns video metadata along with all generated clips.
     Only returns videos belonging to the authenticated user.
+    Generates temporary SAS URLs for secure access to Azure-hosted clips.
     """
     try:
         # Query video with clips
@@ -244,6 +245,76 @@ async def get_video_details(
         clips_result = await db.execute(clips_query)
         clips = clips_result.scalars().all()
         
+        # Generate SAS URLs for secure access
+        from app.services.azure_storage import get_azure_storage_service
+        azure_storage = await get_azure_storage_service()
+        
+        # Process clips and generate SAS URLs
+        clips_with_sas = []
+        for clip in clips:
+            clip_dict = {
+                "id": clip.id,
+                "video_id": clip.video_id,
+                "start_time": clip.start_time,
+                "end_time": clip.end_time,
+                "duration": clip.end_time - clip.start_time,
+                "created_at": clip.created_at,
+                "title": clip.title,
+                "file_size": clip.file_size
+            }
+            
+            # Generate SAS URL for the clip (2-hour expiry)
+            if clip.blob_url:
+                try:
+                    # Extract blob name from the full URL
+                    blob_name = clip.blob_url.split('/')[-1]
+                    if '/' in clip.blob_url.split('onelinkdb.blob.core.windows.net/')[1]:
+                        # Full path including container
+                        blob_path = clip.blob_url.split('onelinkdb.blob.core.windows.net/')[1]
+                        container_name = blob_path.split('/')[0]
+                        blob_name = '/'.join(blob_path.split('/')[1:])
+                    else:
+                        container_name = "onelinkdb"  # default container
+                    
+                    sas_url = await azure_storage.generate_sas_url(
+                        blob_name=blob_name,
+                        container_name=container_name,
+                        expiry_hours=2
+                    )
+                    clip_dict["s3_url"] = sas_url  # Frontend expects s3_url field
+                except Exception as e:
+                    print(f"Warning: Failed to generate SAS URL for clip {clip.id}: {str(e)}")
+                    clip_dict["s3_url"] = clip.blob_url  # Fallback to original URL
+            else:
+                clip_dict["s3_url"] = None
+            
+            # Generate SAS URL for the thumbnail (2-hour expiry)
+            if clip.thumbnail_url:
+                try:
+                    # Extract blob name from the full URL
+                    thumbnail_blob_name = clip.thumbnail_url.split('/')[-1]
+                    if '/' in clip.thumbnail_url.split('onelinkdb.blob.core.windows.net/')[1]:
+                        # Full path including container
+                        thumbnail_blob_path = clip.thumbnail_url.split('onelinkdb.blob.core.windows.net/')[1]
+                        thumbnail_container_name = thumbnail_blob_path.split('/')[0]
+                        thumbnail_blob_name = '/'.join(thumbnail_blob_path.split('/')[1:])
+                    else:
+                        thumbnail_container_name = "onelinkdb"  # default container
+                    
+                    thumbnail_sas_url = await azure_storage.generate_sas_url(
+                        blob_name=thumbnail_blob_name,
+                        container_name=thumbnail_container_name,
+                        expiry_hours=2
+                    )
+                    clip_dict["thumbnail_url"] = thumbnail_sas_url
+                except Exception as e:
+                    print(f"Warning: Failed to generate SAS URL for thumbnail {clip.id}: {str(e)}")
+                    clip_dict["thumbnail_url"] = clip.thumbnail_url  # Fallback to original URL
+            else:
+                clip_dict["thumbnail_url"] = None
+            
+            clips_with_sas.append(clip_dict)
+        
         return VideoResponse(
             id=video.id,
             user_id=video.user_id,
@@ -251,12 +322,13 @@ async def get_video_details(
             title=video.title,
             status=video.status,
             created_at=video.created_at,
-            clips=clips
+            clips=clips_with_sas
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"Error getting video details: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve video details: {str(e)}"
