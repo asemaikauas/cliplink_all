@@ -90,7 +90,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
     const handleDownload = () => {
         try {
             const link = document.createElement('a');
-            link.href = `${config.API_BASE_URL}/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`;
+            link.href = clip.s3_url;
             link.download = `${clip.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
             document.body.appendChild(link);
             link.click();
@@ -124,7 +124,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ clip, isOpen, onClo
                     <div className="aspect-[9/16]">
                         <video
                             ref={videoRef}
-                            src={`${config.API_BASE_URL}/clips/${clip.s3_url.replace(/\\/g, '/').split('/').pop()}`}
+                            src={clip.s3_url}
                             className="w-full h-full object-contain"
                             preload="metadata"
                             onLoadedMetadata={handleLoadedMetadata}

@@ -560,7 +560,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const handleDownload = (clip: Clip) => {
         try {
             const link = document.createElement('a');
-            link.href = clipUrl(clip.s3_url);
+            link.href = clip.s3_url;
             link.download = `${clip.title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
             document.body.appendChild(link);
             link.click();
