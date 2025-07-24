@@ -341,7 +341,7 @@ async def _process_single_viral_segment_parallel(
                 container_type="clips",
                 metadata={
                     "segment_index": str(segment_index),
-                    "title": title,
+                    "title": youtube_service._sanitize_filename(title),
                     "start_time": str(start_time),
                     "end_time": str(end_time),
                     "duration": str(end_time - start_time),
@@ -365,7 +365,7 @@ async def _process_single_viral_segment_parallel(
                     metadata={
                         "clip_blob_name": clip_blob_name,
                         "segment_index": str(segment_index),
-                        "title": title,
+                        "title": youtube_service._sanitize_filename(title),
                         "created_at": datetime.utcnow().isoformat()
                     }
                 )
@@ -663,7 +663,7 @@ async def _process_video_workflow_async(
                 container_type="clips",
                 metadata={
                     "segment_index": str(i),
-                    "title": viral_segments[i].get("title", f"segment_{i+1}"),
+                    "title": youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}")),
                     "start_time": str(viral_segments[i].get("start")),
                     "end_time": str(viral_segments[i].get("end")),
                     "has_subtitles": "true",
