@@ -45,7 +45,7 @@ export default function App() {
                       : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                       }`}
                   >
-                    Home
+                    Dashboard
                   </button>
                   <button
                     onClick={() => window.location.href = '/process'}

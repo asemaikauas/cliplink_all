@@ -105,7 +105,7 @@ export default function EtailLanding() {
                             onClick={() => window.location.href = '/dashboard'}
                             className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base flex-shrink-0"
                         >
-                            Home
+                            Dashboard
                         </button>
                         <div className="flex-shrink-0">
                             <UserButton afterSignOutUrl="/" />
