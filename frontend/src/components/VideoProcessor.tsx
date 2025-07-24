@@ -171,7 +171,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                     start_time: clip.start_time,
                                     end_time: clip.end_time,
                                     duration: clip.duration,
-                                    s3_url: clip.blob_url, // Use Azure blob URL
+                                    s3_url: clip.s3_url, // Use the SAS URL from backend
                                     thumbnail_url: clip.thumbnail_url,
                                     clip_id: clip.id
                                 });

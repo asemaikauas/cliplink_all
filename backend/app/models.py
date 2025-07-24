@@ -77,6 +77,7 @@ class Clip(Base):
     video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
     blob_url = Column(Text, nullable=False)  # Azure Blob Storage URL
     thumbnail_url = Column(Text, nullable=True)  # Thumbnail image URL
+    title = Column(String(255), nullable=True)  # Clip title
     start_time = Column(Float, nullable=False)
     end_time = Column(Float, nullable=False)
     duration = Column(Float, nullable=False)

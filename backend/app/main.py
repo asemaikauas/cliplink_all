@@ -259,26 +259,15 @@ async def get_video_details(
                 "end_time": clip.end_time,
                 "duration": clip.end_time - clip.start_time,
                 "created_at": clip.created_at,
-                "title": clip.title,
+                "title": clip.title or f"Clip {clip.start_time:.0f}s-{clip.end_time:.0f}s",
                 "file_size": clip.file_size
             }
             
             # Generate SAS URL for the clip (2-hour expiry)
             if clip.blob_url:
                 try:
-                    # Extract blob name from the full URL
-                    blob_name = clip.blob_url.split('/')[-1]
-                    if '/' in clip.blob_url.split('onelinkdb.blob.core.windows.net/')[1]:
-                        # Full path including container
-                        blob_path = clip.blob_url.split('onelinkdb.blob.core.windows.net/')[1]
-                        container_name = blob_path.split('/')[0]
-                        blob_name = '/'.join(blob_path.split('/')[1:])
-                    else:
-                        container_name = "onelinkdb"  # default container
-                    
                     sas_url = await azure_storage.generate_sas_url(
-                        blob_name=blob_name,
-                        container_name=container_name,
+                        blob_url=clip.blob_url,
                         expiry_hours=2
                     )
                     clip_dict["s3_url"] = sas_url  # Frontend expects s3_url field
@@ -291,19 +280,8 @@ async def get_video_details(
             # Generate SAS URL for the thumbnail (2-hour expiry)
             if clip.thumbnail_url:
                 try:
-                    # Extract blob name from the full URL
-                    thumbnail_blob_name = clip.thumbnail_url.split('/')[-1]
-                    if '/' in clip.thumbnail_url.split('onelinkdb.blob.core.windows.net/')[1]:
-                        # Full path including container
-                        thumbnail_blob_path = clip.thumbnail_url.split('onelinkdb.blob.core.windows.net/')[1]
-                        thumbnail_container_name = thumbnail_blob_path.split('/')[0]
-                        thumbnail_blob_name = '/'.join(thumbnail_blob_path.split('/')[1:])
-                    else:
-                        thumbnail_container_name = "onelinkdb"  # default container
-                    
                     thumbnail_sas_url = await azure_storage.generate_sas_url(
-                        blob_name=thumbnail_blob_name,
-                        container_name=thumbnail_container_name,
+                        blob_url=clip.thumbnail_url,
                         expiry_hours=2
                     )
                     clip_dict["thumbnail_url"] = thumbnail_sas_url

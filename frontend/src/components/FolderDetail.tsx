@@ -6,6 +6,7 @@ import { apiUrl } from '../config';
 interface Clip {
     id: string;
     s3_url: string;
+    title?: string;
     start_time: number;
     end_time: number;
     duration: number;
@@ -193,7 +194,7 @@ const FolderDetail = () => {
                                     {/* Content */}
                                     <div className="p-4">
                                         <h3 className="font-semibold text-gray-900 mb-2">
-                                            Clip {index + 1}
+                                            {clip.title || `Clip ${index + 1}`}
                                         </h3>
                                         <div className="text-sm text-gray-600 space-y-1">
                                             <div>
