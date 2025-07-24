@@ -1458,8 +1458,8 @@ async def process_comprehensive_workflow_async(
         # Start background processing with database integration
         try:
             print(f"🚀 Starting background processing...")
-            workflow_executor.submit(
-                _process_comprehensive_with_db_updates_sync,
+            # Instead of using thread executor, run async directly and handle DB updates after completion
+            asyncio.create_task(_process_comprehensive_with_db_updates_async(
                 task_id=task_id,
                 video_record_id=str(video_record.id),
                 user_id=str(current_user.id),
@@ -1472,7 +1472,7 @@ async def process_comprehensive_workflow_async(
                 export_codec=request.export_codec or "libx264",
                 enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
                 audio_offset_ms=request.audio_offset_ms or 0
-            )
+            ))
             print(f"✅ Background task submitted successfully")
         except Exception as e:
             print(f"❌ Failed to start background processing: {str(e)}")
@@ -1506,40 +1506,6 @@ async def process_comprehensive_workflow_async(
         import traceback
         print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
-
-def _process_comprehensive_with_db_updates_sync(
-    task_id: str,
-    video_record_id: str,
-    user_id: str,
-    youtube_url: str,
-    quality: str,
-    create_vertical: bool,
-    smoothing_strength: str,
-    burn_subtitles: bool = True,
-    font_size: int = 32,
-    export_codec: str = "libx264",
-    enable_audio_sync_fix: bool = True,
-    audio_offset_ms: float = 0.0
-):
-    """
-    Synchronous wrapper for database updates in background thread
-    """
-    # Run the async workflow in a new event loop
-    asyncio.run(_process_comprehensive_with_db_updates_async(
-        task_id=task_id,
-        video_record_id=video_record_id,
-        user_id=user_id,
-        youtube_url=youtube_url,
-        quality=quality,
-        create_vertical=create_vertical,
-        smoothing_strength=smoothing_strength,
-        burn_subtitles=burn_subtitles,
-        font_size=font_size,
-        export_codec=export_codec,
-        enable_audio_sync_fix=enable_audio_sync_fix,
-        audio_offset_ms=audio_offset_ms
-    ))
-
 
 async def _process_comprehensive_with_db_updates_async(
     task_id: str,
