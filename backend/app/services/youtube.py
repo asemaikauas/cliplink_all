@@ -293,7 +293,7 @@ class YouTubeService:
             
             # Try HuntAPI fallback if available
             if self.huntapi_service:
-                logger.info(f"🔄 Trying HuntAPI fallback for {url}")
+                logger.info(f"🔄 Trying HuntAPI fallback for {url} (requested quality: {quality})")
                 try:
                     # Get download URL from HuntAPI
                     huntapi_download_url = await self.huntapi_service.download_video(url, quality)

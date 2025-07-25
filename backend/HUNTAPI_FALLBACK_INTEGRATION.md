@@ -4,7 +4,7 @@ This document explains the HuntAPI integration that provides a seamless fallback
 
 ## Overview
 
-The ClipLink service now includes automatic fallback to HuntAPI's Video Download endpoint when the Apify actor `xtech/youtube-video-downloader` fails. This ensures higher reliability and uptime for YouTube video processing.
+The ClipLink service now includes automatic fallback to HuntAPI's Video Download endpoint when the Apify actor `xtech/youtube-video-downloader` fails. This ensures higher reliability and uptime for YouTube video processing. The integration includes comprehensive quality logging to track the actual video quality delivered by each service.
 
 ## Architecture
 
@@ -153,12 +153,14 @@ All fallback attempts are logged with clear indicators:
 ```
 🎬 Starting Apify download: https://youtube.com/... (quality: 1080p)
 ❌ Apify download failed: [error details]
-🔄 Trying HuntAPI fallback for https://youtube.com/...
+🔄 Trying HuntAPI fallback for https://youtube.com/... (requested quality: 1080p)
 📋 HuntAPI job created: 0193443f-fb80-9d19-29ba-82bc77c7cd84
 📊 HuntAPI job 0193443f... status: QueuedJob
 ⏳ HuntAPI job 0193443f... still processing, waiting 30s...
 📊 HuntAPI job 0193443f... status: CompletedJob
-✅ HuntAPI fallback successful: [download_url]
+📊 HuntAPI video quality: 1080p
+✅ HuntAPI download complete
+✅ HuntAPI fallback successful: [filename]
 ```
 
 ## Monitoring
@@ -170,6 +172,11 @@ All fallback attempts are logged with clear indicators:
 ### Warning Indicators
 - `⚠️ HuntAPI fallback not available` - Service not configured
 - `⏳ HuntAPI job still processing` - Normal polling message
+
+### Quality Logging
+- `📊 HuntAPI video quality: 1080p` - Actual quality delivered by HuntAPI
+- `📊 HuntAPI video quality: 720p60` - Quality with frame rate info
+- `📊 HuntAPI video quality: 4K` - High resolution content
 
 ### Error Indicators
 - `❌ HuntAPI fallback also failed` - Both services failed
@@ -308,7 +315,13 @@ If you encounter issues with the HuntAPI integration:
 
 ## Changelog
 
-### v1.0.0 (Current)
+### v1.1.0 (Current)
+- ✅ Added video quality logging for HuntAPI downloads
+- ✅ Enhanced logging to show requested vs. actual quality
+- ✅ Improved quality detection from metadata (resolution, fps, etc.)
+- ✅ Added quality extraction test suite
+
+### v1.0.0
 - ✅ Initial HuntAPI integration
 - ✅ Automatic fallback from Apify failures
 - ✅ Quality mapping between services

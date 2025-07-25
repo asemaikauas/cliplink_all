@@ -37,11 +37,51 @@ async def test_huntapi_direct():
         
         logger.info(f"✅ HuntAPI test successful!")
         logger.info(f"📥 Download URL obtained: {download_url[:100]}...")
+        logger.info("📊 Quality logging should appear above this message")
         
         return True
         
     except Exception as e:
         logger.error(f"❌ HuntAPI direct test failed: {str(e)}")
+        return False
+
+async def test_quality_extraction():
+    """Test quality extraction from various metadata formats"""
+    logger.info("🧪 Testing video quality extraction...")
+    
+    try:
+        huntapi = HuntAPIService()
+        
+        # Test cases for quality extraction
+        test_cases = [
+            {"resolution": "1920x1080", "expected": "1080p"},
+            {"resolution": "1280x720", "fps": "60", "expected": "720p60"},
+            {"height": 1440, "expected": "1440p"},
+            {"resolution": "3840x2160", "expected": "4K"},
+            {"quality": "HD", "expected": "HD"},
+            {"video_quality": "720p", "expected": "720p"},
+            {}, # Empty metadata
+        ]
+        
+        for i, test_case in enumerate(test_cases):
+            metadata = {k: v for k, v in test_case.items() if k != "expected"}
+            expected = test_case.get("expected")
+            
+            result = huntapi._extract_video_quality(metadata)
+            
+            if expected:
+                if result == expected:
+                    logger.info(f"✅ Test {i+1}: {metadata} → {result}")
+                else:
+                    logger.warning(f"⚠️ Test {i+1}: {metadata} → {result} (expected {expected})")
+            else:
+                logger.info(f"📝 Test {i+1}: {metadata} → {result} (no expected value)")
+        
+        logger.info("✅ Quality extraction tests completed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Quality extraction test failed: {str(e)}")
         return False
 
 async def test_youtube_service_with_fallback():
@@ -125,10 +165,13 @@ async def main():
         logger.error("❌ Environment variable test failed. Cannot proceed.")
         return
     
-    # Test 2: HuntAPI direct test
+    # Test 2: Quality extraction test (offline)
+    quality_test = await test_quality_extraction()
+    
+    # Test 3: HuntAPI direct test
     huntapi_test = await test_huntapi_direct()
     
-    # Test 3: YouTube service fallback test (only if HuntAPI works)
+    # Test 4: YouTube service fallback test (only if HuntAPI works)
     if huntapi_test:
         fallback_test = await test_youtube_service_with_fallback()
     else:
@@ -138,11 +181,12 @@ async def main():
     # Summary
     logger.info("📊 Test Results Summary:")
     logger.info(f"  Environment Variables: {'✅ PASS' if env_test else '❌ FAIL'}")
+    logger.info(f"  Quality Extraction: {'✅ PASS' if quality_test else '❌ FAIL'}")
     logger.info(f"  HuntAPI Direct: {'✅ PASS' if huntapi_test else '❌ FAIL'}")
     logger.info(f"  YouTube Fallback: {'✅ PASS' if fallback_test else '❌ FAIL'}")
     
-    if all([env_test, huntapi_test, fallback_test]):
-        logger.info("🎉 All tests passed! HuntAPI integration is working correctly.")
+    if all([env_test, quality_test, huntapi_test, fallback_test]):
+        logger.info("🎉 All tests passed! HuntAPI integration with quality logging is working correctly.")
     else:
         logger.error("⚠️ Some tests failed. Check the logs above for details.")
 

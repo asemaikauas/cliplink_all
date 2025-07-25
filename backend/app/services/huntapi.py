@@ -58,7 +58,7 @@ class HuntAPIService:
             
             # Step 2: Poll for completion
             download_url = await self._poll_job_completion(job_id)
-            logger.info(f"✅ HuntAPI download complete: {download_url}")
+            logger.info(f"✅ HuntAPI download complete")
             
             return download_url
             
@@ -139,6 +139,12 @@ class HuntAPIService:
                     if not download_url:
                         raise HuntAPIError("No download URL in completed job result")
                     
+                    # Extract and log video quality information
+                    metadata = result.get("metadata", {})
+                    video_quality = self._extract_video_quality(metadata)
+                    if video_quality:
+                        logger.info(f"📊 HuntAPI video quality: {video_quality}")
+                    
                     return download_url
                 
                 elif status == "Error":
@@ -178,4 +184,77 @@ class HuntAPIService:
             "duration": metadata.get("duration"),
             "resolution": metadata.get("resolution"),
             "format": metadata.get("format", "mp4")
-        } 
+        }
+    
+    def _extract_video_quality(self, metadata: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract video quality string from HuntAPI metadata for logging
+        
+        Args:
+            metadata: Video metadata from HuntAPI result
+            
+        Returns:
+            Quality string like "1080p", "720p60", "4K", etc. or None if not found
+        """
+        # Try different metadata fields that might contain quality info
+        quality_indicators = [
+            metadata.get("resolution"),      # e.g., "1920x1080"
+            metadata.get("quality"),         # e.g., "1080p"
+            metadata.get("video_quality"),   # e.g., "HD"
+            metadata.get("height"),          # e.g., 1080
+            metadata.get("width"),           # e.g., 1920
+        ]
+        
+        # Process resolution string (e.g., "1920x1080" -> "1080p")
+        resolution = metadata.get("resolution")
+        if resolution and isinstance(resolution, str):
+            if "x" in resolution:
+                try:
+                    width, height = resolution.split("x")
+                    height = int(height)
+                    # Convert height to standard quality labels
+                    if height >= 2160:
+                        quality_label = "4K"
+                    elif height >= 1440:
+                        quality_label = "1440p"
+                    elif height >= 1080:
+                        quality_label = "1080p"
+                    elif height >= 720:
+                        quality_label = "720p"
+                    elif height >= 480:
+                        quality_label = "480p"
+                    elif height >= 360:
+                        quality_label = "360p"
+                    else:
+                        quality_label = f"{height}p"
+                    
+                    # Check for frame rate info
+                    fps = metadata.get("fps") or metadata.get("framerate")
+                    if fps and int(fps) > 30:
+                        quality_label += f"{fps}"
+                    
+                    return quality_label
+                except (ValueError, TypeError):
+                    pass
+        
+        # Try direct quality field
+        quality = metadata.get("quality")
+        if quality and isinstance(quality, str):
+            return quality
+        
+        # Try height field
+        height = metadata.get("height")
+        if height and isinstance(height, (int, str)):
+            try:
+                height_int = int(height)
+                if height_int >= 360:
+                    return f"{height_int}p"
+            except (ValueError, TypeError):
+                pass
+        
+        # Fallback to any string quality indicator
+        for indicator in quality_indicators:
+            if indicator and isinstance(indicator, str) and indicator.strip():
+                return indicator.strip()
+        
+        return None 
