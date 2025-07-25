@@ -24,6 +24,16 @@ except ImportError as e:
     VERTICAL_CROP_AVAILABLE = False
     print(f"⚠️ Vertical cropping not available: {e}")
 
+try:
+    from .huntapi import HuntAPIService, HuntAPIError
+    HUNTAPI_AVAILABLE = True
+    print("✅ HuntAPI fallback service loaded")
+except ImportError as e:
+    HUNTAPI_AVAILABLE = False
+    HuntAPIService = None
+    HuntAPIError = None
+    print(f"⚠️ HuntAPI fallback not available: {e}")
+
 # Configure MoviePy to use the system ffmpeg if available
 try:
     import imageio_ffmpeg
@@ -94,6 +104,15 @@ class YouTubeService:
         
         # Initialize Apify client
         self.client = ApifyClient(self.apify_token)
+        
+        # Initialize HuntAPI fallback service
+        self.huntapi_service = None
+        if HUNTAPI_AVAILABLE:
+            try:
+                self.huntapi_service = HuntAPIService()
+                logger.info("✅ HuntAPI fallback service initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize HuntAPI service: {e}")
         
         # Quality mapping for Apify Actor
         self.quality_map = {
@@ -271,6 +290,39 @@ class YouTubeService:
             
         except Exception as e:
             logger.error(f"Apify download failed: {str(e)}")
+            
+            # Try HuntAPI fallback if available
+            if self.huntapi_service:
+                logger.info(f"🔄 Trying HuntAPI fallback for {url}")
+                try:
+                    # Get download URL from HuntAPI
+                    huntapi_download_url = await self.huntapi_service.download_video(url, quality)
+                    
+                    # Extract video ID for consistent naming
+                    video_id_info = self._extract_video_id_from_url(url)
+                    video_id = video_id_info["id"]
+                    
+                    # Download the video file from HuntAPI's download URL
+                    downloaded_file = self._download_file_from_url(
+                        huntapi_download_url, 
+                        video_id, 
+                        f"HuntAPI_{quality}", 
+                        quality
+                    )
+                    
+                    logger.info(f"✅ HuntAPI fallback successful: {downloaded_file}")
+                    
+                    # 🔧 PREPROCESSING: Check codec and convert AV1 to H.264 if needed
+                    processed_file = await self._preprocess_video_for_compatibility(downloaded_file)
+                    
+                    return processed_file
+                    
+                except Exception as huntapi_error:
+                    logger.error(f"HuntAPI fallback also failed: {str(huntapi_error)}")
+            else:
+                logger.warning("⚠️ HuntAPI fallback not available")
+            
+            # Both Apify and HuntAPI failed, raise appropriate error
             if "Video unavailable" in str(e):
                 raise DownloadError(f"Video is unavailable or private: {url}")
             elif "private" in str(e).lower():

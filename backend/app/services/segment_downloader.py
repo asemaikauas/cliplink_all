@@ -16,6 +16,17 @@ import time
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# Import HuntAPI service for fallback
+try:
+    from .huntapi import HuntAPIService, HuntAPIError
+    HUNTAPI_AVAILABLE = True
+    logger.info("✅ HuntAPI fallback service available for segment downloader")
+except ImportError as e:
+    HUNTAPI_AVAILABLE = False
+    HuntAPIService = None
+    HuntAPIError = None
+    logger.warning(f"⚠️ HuntAPI fallback not available for segment downloader: {e}")
+
 class SegmentDownloadService:
     """
     Service for downloading specific video segments instead of full videos
@@ -27,6 +38,15 @@ class SegmentDownloadService:
         if not self.apify_token:
             raise ValueError("APIFY_TOKEN environment variable not set")
         self.client = ApifyClient(self.apify_token)
+        
+        # Initialize HuntAPI fallback service
+        self.huntapi_service = None
+        if HUNTAPI_AVAILABLE:
+            try:
+                self.huntapi_service = HuntAPIService()
+                logger.info("✅ HuntAPI fallback service initialized for segment downloader")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize HuntAPI service for segment downloader: {e}")
         self.local_downloads_dir = Path("downloads/segments")
         self.local_downloads_dir.mkdir(parents=True, exist_ok=True)
         
@@ -278,40 +298,61 @@ class SegmentDownloadService:
     async def _get_video_download_url(self, youtube_url: str, quality: str) -> str:
         """
         Use Apify to get the video download URL without downloading the full file
+        Falls back to HuntAPI if Apify fails
         """
-        logger.info("🔍 Getting download URL from Apify...")
-        
-        # Map quality to Apify resolution
-        quality_map = {
-            "8k": "2160p", "4k": "2160p", "1440p": "1440p", 
-            "1080p": "1080p", "720p": "720p", "best": "1080p"
-        }
-        apify_quality = quality_map.get(quality, "1080p")
-        
-        run_input = {
-            "startUrls": [{"url": youtube_url}],
-            "quality": apify_quality,
-            "maxConcurrency": 1
-        }
-        
-        # Run Apify Actor
-        run = self.client.actor("QrdkHOap2H2LvbyZk").call(run_input=run_input)
-        
-        # Get results
-        dataset = self.client.dataset(run["defaultDatasetId"])
-        results = dataset.list_items().items
-        
-        if not results or len(results) == 0:
-            raise Exception("No download results returned from Apify")
-        
-        video_data = results[0]
-        download_url = video_data.get('download_url')
-        
-        if not download_url:
-            raise Exception("No download URL provided by Apify")
-        
-        logger.info(f"✅ Got download URL from Apify")
-        return download_url
+        try:
+            logger.info("🔍 Getting download URL from Apify...")
+            
+            # Map quality to Apify resolution
+            quality_map = {
+                "8k": "2160p", "4k": "2160p", "1440p": "1440p", 
+                "1080p": "1080p", "720p": "720p", "best": "1080p"
+            }
+            apify_quality = quality_map.get(quality, "1080p")
+            
+            run_input = {
+                "startUrls": [{"url": youtube_url}],
+                "quality": apify_quality,
+                "maxConcurrency": 1
+            }
+            
+            # Run Apify Actor
+            run = self.client.actor("QrdkHOap2H2LvbyZk").call(run_input=run_input)
+            
+            # Get results
+            dataset = self.client.dataset(run["defaultDatasetId"])
+            results = dataset.list_items().items
+            
+            if not results or len(results) == 0:
+                raise Exception("No download results returned from Apify")
+            
+            video_data = results[0]
+            download_url = video_data.get('download_url')
+            
+            if not download_url:
+                raise Exception("No download URL provided by Apify")
+            
+            logger.info(f"✅ Got download URL from Apify")
+            return download_url
+            
+        except Exception as e:
+            logger.error(f"Apify URL retrieval failed: {str(e)}")
+            
+            # Try HuntAPI fallback if available
+            if self.huntapi_service:
+                logger.info(f"🔄 Trying HuntAPI fallback for URL retrieval: {youtube_url}")
+                try:
+                    huntapi_download_url = await self.huntapi_service.download_video(youtube_url, quality)
+                    logger.info(f"✅ HuntAPI fallback successful for URL retrieval")
+                    return huntapi_download_url
+                    
+                except Exception as huntapi_error:
+                    logger.error(f"HuntAPI fallback also failed: {str(huntapi_error)}")
+            else:
+                logger.warning("⚠️ HuntAPI fallback not available")
+            
+            # Both Apify and HuntAPI failed
+            raise Exception(f"Failed to get video download URL from both Apify and HuntAPI: {str(e)}")
     
     async def _download_single_segment(
         self,
