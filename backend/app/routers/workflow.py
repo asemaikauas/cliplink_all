@@ -653,8 +653,55 @@ async def _process_video_workflow_async(
         clip_storage = await get_clip_storage_service()
         
         azure_urls = []
+        azure_clips_info = []  # Add detailed clip info including thumbnails
         for i, final_clip in enumerate(final_clips):
             safe_title = youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}"))
+            
+            # Generate thumbnail before uploading
+            print(f"   📸 Generating thumbnail for clip {i+1}...")
+            azure_thumbnail_url = None
+            try:
+                from app.services.thumbnail import generate_thumbnail
+                thumbnails_dir = final_clip.parent / "thumbnails"
+                thumbnails_dir.mkdir(exist_ok=True)
+                clip_id = f"clip_{i+1}_{safe_title}"
+                
+                thumbnail_result = await generate_thumbnail(
+                    video_path=final_clip,
+                    output_dir=thumbnails_dir,
+                    clip_id=clip_id,
+                    width=300,
+                    timestamp=1.0
+                )
+                
+                if thumbnail_result.get("success"):
+                    thumbnail_filename = thumbnail_result.get("thumbnail_filename")
+                    thumbnail_path = thumbnails_dir / thumbnail_filename
+                    
+                    # Upload thumbnail to Azure
+                    thumbnail_blob_name = f"thumbnails/{safe_title}_{i+1}_{int(time.time())}.jpg"
+                    azure_thumbnail_url = await clip_storage.azure_storage.upload_file(
+                        file_path=str(thumbnail_path),
+                        blob_name=thumbnail_blob_name,
+                        container_type="thumbnails",
+                        metadata={
+                            "clip_index": str(i),
+                            "title": safe_title,
+                            "created_at": datetime.utcnow().isoformat()
+                        }
+                    )
+                    print(f"   ✅ Thumbnail uploaded to Azure: {azure_thumbnail_url}")
+                    
+                    # Clean up local thumbnail
+                    if thumbnail_path.exists():
+                        thumbnail_path.unlink()
+                else:
+                    print(f"   ⚠️ Thumbnail generation failed for clip {i+1}")
+                    
+            except Exception as e:
+                print(f"   ⚠️ Thumbnail processing failed for clip {i+1}: {str(e)}")
+            
+            # Upload clip to Azure
             blob_name = f"clips/{safe_title}_{int(time.time())}_{i+1}.mp4"
             
             azure_url = await clip_storage.azure_storage.upload_file(
@@ -672,6 +719,20 @@ async def _process_video_workflow_async(
                 }
             )
             azure_urls.append(azure_url)
+            
+            # Store detailed clip info including thumbnail URL
+            clip_info = {
+                "azure_clip_url": azure_url,
+                "azure_thumbnail_url": azure_thumbnail_url,
+                "title": viral_segments[i].get("title", f"Clip {i+1}"),
+                "start_time": viral_segments[i].get("start", 0.0),
+                "end_time": viral_segments[i].get("end", 60.0),
+                "duration": viral_segments[i].get("end", 60.0) - viral_segments[i].get("start", 0.0),
+                "segment_index": i,
+                "has_thumbnails": azure_thumbnail_url is not None
+            }
+            azure_clips_info.append(clip_info)
+            
             print(f"☁️ Uploaded clip {i+1} to Azure")
             
             # Clean up local final clip after upload
@@ -686,6 +747,7 @@ async def _process_video_workflow_async(
             "workflow_type": "comprehensive",
             "clips_created": len(azure_urls),
             "azure_urls": azure_urls,
+            "azure_clips_info": azure_clips_info,  # Add detailed clip info
             "video_info": {
                 "id": video_info['id'],
                 "title": video_info['title'],
@@ -1580,60 +1642,76 @@ async def _process_comprehensive_with_db_updates_async(
                 
                 video_record.status = VideoStatus.DONE
                 
-                # Extract Azure URLs and segment info from workflow result
+                # Extract Azure URLs and detailed clip info from workflow result
                 azure_urls = workflow_result.get("azure_urls", [])
+                azure_clips_info = workflow_result.get("azure_clips_info", [])
                 
-                # Get segments from the workflow result - check multiple possible locations
-                viral_segments = []
-                
-                # First try: analysis_results.segments (from gemini analysis)
-                analysis_results = workflow_result.get("analysis_results", {})
-                if analysis_results.get("segments"):
-                    viral_segments = analysis_results["segments"]
-                    print(f"📊 Found {len(viral_segments)} segments from analysis_results")
-                
-                # Second try: segments_info (from comprehensive workflow)
-                elif workflow_result.get("segments_info", {}).get("segments"):
-                    viral_segments = workflow_result["segments_info"]["segments"] 
-                    print(f"📊 Found {len(viral_segments)} segments from segments_info")
-                
-                # Third try: get from task result
+                # Use detailed clip info if available, otherwise fallback to simple URLs
+                if azure_clips_info:
+                    print(f"📊 Using detailed clip info with thumbnails: {len(azure_clips_info)} clips")
+                    clips_to_process = azure_clips_info
                 else:
-                    with workflow_task_lock:
-                        task_result = workflow_tasks.get(task_id, {})
-                        if task_result.get("result", {}).get("analysis_results", {}).get("segments"):
-                            viral_segments = task_result["result"]["analysis_results"]["segments"]
-                            print(f"📊 Found {len(viral_segments)} segments from task result")
+                    print(f"📊 Using simple URL list: {len(azure_urls)} clips")
+                    # Fallback: get segments for title/timing info
+                    viral_segments = []
+                    analysis_results = workflow_result.get("analysis_results", {})
+                    if analysis_results.get("segments"):
+                        viral_segments = analysis_results["segments"]
+                        print(f"📊 Found {len(viral_segments)} segments from analysis_results")
+                    elif workflow_result.get("segments_info", {}).get("segments"):
+                        viral_segments = workflow_result["segments_info"]["segments"] 
+                        print(f"📊 Found {len(viral_segments)} segments from segments_info")
+                    
+                    # Convert simple URLs to clip info format
+                    clips_to_process = []
+                    for i, azure_url in enumerate(azure_urls):
+                        if i < len(viral_segments):
+                            segment_data = viral_segments[i]
+                            clip_info = {
+                                "azure_clip_url": azure_url,
+                                "azure_thumbnail_url": None,
+                                "title": segment_data.get("title", f"Clip {i+1}"),
+                                "start_time": segment_data.get("start", 0.0),
+                                "end_time": segment_data.get("end", 60.0),
+                                "duration": segment_data.get("end", 60.0) - segment_data.get("start", 0.0)
+                            }
+                        else:
+                            clip_info = {
+                                "azure_clip_url": azure_url,
+                                "azure_thumbnail_url": None,
+                                "title": f"Clip {i+1}",
+                                "start_time": i * 60.0,
+                                "end_time": (i + 1) * 60.0,
+                                "duration": 60.0
+                            }
+                        clips_to_process.append(clip_info)
                 
-                print(f"📊 Saving {len(azure_urls)} clips to database for user {user_id}")
-                print(f"🎯 Segments data: {len(viral_segments)} segments available")
+                print(f"📊 Saving {len(clips_to_process)} clips to database for user {user_id}")
                 
                 # Create clip records with Azure blob URLs
                 clips_created = 0
-                for i, azure_url in enumerate(azure_urls):
+                for i, clip_info in enumerate(clips_to_process):
                     try:
-                        # Get segment timing info (with better fallbacks)
-                        if i < len(viral_segments):
-                            segment_data = viral_segments[i]
-                            start_time = segment_data.get("start", 0.0)
-                            end_time = segment_data.get("end", 60.0) 
-                            duration = segment_data.get("duration") or (end_time - start_time)
-                            segment_title = segment_data.get("title", f"Clip {i+1}")
-                            print(f"   📍 Clip {i+1}: {start_time}s - {end_time}s ({duration}s) - '{segment_title}'")
-                        else:
-                            # Fallback if segment data is missing
-                            start_time = i * 60.0  # Assume 60s clips spaced out
-                            end_time = (i + 1) * 60.0
-                            duration = 60.0
-                            segment_title = f"Clip {i+1}"
-                            print(f"   ⚠️  Clip {i+1}: Using fallback timing")
+                        # Extract info from clip_info structure
+                        azure_url = clip_info.get("azure_clip_url")
+                        azure_thumbnail_url = clip_info.get("azure_thumbnail_url")
+                        title = clip_info.get("title", f"Clip {i+1}")
+                        start_time = clip_info.get("start_time", 0.0)
+                        end_time = clip_info.get("end_time", 60.0)
+                        duration = clip_info.get("duration", end_time - start_time)
                         
-                        # Create clip record with Azure blob URL
+                        print(f"   📍 Clip {i+1}: {start_time}s - {end_time}s ({duration}s) - '{title}'")
+                        if azure_thumbnail_url:
+                            print(f"      🖼️ Thumbnail: {azure_thumbnail_url}")
+                        else:
+                            print(f"      ⚠️ No thumbnail available")
+                        
+                        # Create clip record with Azure blob URL and thumbnail
                         clip_record = Clip(
                             video_id=video_record.id,
                             blob_url=azure_url,  # Azure blob URL
-                            thumbnail_url=None,  # TODO: Extract from workflow result
-                            title=segment_title,  # Save the actual segment title
+                            thumbnail_url=azure_thumbnail_url,  # Azure thumbnail URL (can be None)
+                            title=title,  # Save the actual segment title
                             start_time=start_time,
                             end_time=end_time,
                             duration=duration,

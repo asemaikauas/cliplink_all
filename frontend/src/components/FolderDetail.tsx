@@ -56,6 +56,22 @@ const FolderDetail = () => {
             }
 
             const data = await response.json();
+
+            // Log warnings for missing metadata in clips
+            if (data.clips && Array.isArray(data.clips)) {
+                data.clips.forEach((clip: any, index: number) => {
+                    if (!clip.title) {
+                        console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing title. Using fallback.`);
+                    }
+                    if (!clip.thumbnail_url) {
+                        console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing thumbnail_url. Thumbnail will not be displayed.`);
+                    }
+                    if (clip.duration === null || clip.duration === undefined) {
+                        console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing duration. Using calculated duration.`);
+                    }
+                });
+            }
+
             setVideo(data);
             setLoading(false);
         } catch (err) {
@@ -201,7 +217,7 @@ const FolderDetail = () => {
                                                 Time: {formatDuration(clip.start_time)} - {formatDuration(clip.end_time)}
                                             </div>
                                             <div>
-                                                Duration: {formatDuration(clip.duration)}
+                                                Duration: {formatDuration(clip.duration || (clip.end_time - clip.start_time))}
                                             </div>
                                         </div>
                                     </div>

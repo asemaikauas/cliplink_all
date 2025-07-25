@@ -165,12 +165,23 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                         if (videoDetailResponse.ok) {
                             const videoDetail = await videoDetailResponse.json();
                             videoDetail.clips?.forEach((clip: any, index: number) => {
+                                // Log warnings for missing metadata
+                                if (!clip.title) {
+                                    console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing title. Using fallback.`);
+                                }
+                                if (!clip.thumbnail_url) {
+                                    console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing thumbnail_url. Thumbnail will not be displayed.`);
+                                }
+                                if (clip.duration === null || clip.duration === undefined) {
+                                    console.warn(`⚠️ Clip ${index + 1} (ID: ${clip.id}) is missing duration. Using calculated duration from start/end times.`);
+                                }
+
                                 allClips.push({
                                     id: clip.id,
-                                    title: `${video.title} - Clip ${index + 1}`,
+                                    title: clip.title || `${video.title} - Clip ${index + 1}`,
                                     start_time: clip.start_time,
                                     end_time: clip.end_time,
-                                    duration: clip.duration,
+                                    duration: clip.duration || (clip.end_time - clip.start_time),
                                     blob_url: clip.blob_url, // Use the SAS URL from backend
                                     thumbnail_url: clip.thumbnail_url,
                                     clip_id: clip.id
