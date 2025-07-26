@@ -218,9 +218,19 @@ export default function EtailLanding() {
             <footer className="w-full py-6 flex flex-col md:flex-row justify-between items-center bg-black/80 border-t border-purple-900 z-20 px-8">
                 <span className="text-gray-500 text-sm">© {new Date().getFullYear()} ClipLink. All rights reserved.</span>
                 <div className="flex space-x-4 mt-2 md:mt-0">
-                    <a href="#" className="text-purple-400 hover:text-purple-200 transition-colors">Twitter</a>
-                    <a href="#" className="text-purple-400 hover:text-purple-200 transition-colors">Instagram</a>
-                    <a href="#" className="text-purple-400 hover:text-purple-200 transition-colors">Contact</a>
+                    <a href="mailto:azk2021@nyu.edu?subject=Hello&body=I wanted to reach out..." className="text-purple-400 hover:text-purple-200 transition-colors">Contact</a>
+                    <button
+                        onClick={() => window.location.href = '/terms'}
+                        className="text-purple-400 hover:text-purple-200 transition-colors"
+                    >
+                        Terms of Service
+                    </button>
+                    <button
+                        onClick={() => window.location.href = '/privacy'}
+                        className="text-purple-400 hover:text-purple-200 transition-colors"
+                    >
+                        Privacy Policy
+                    </button>
                 </div>
             </footer>
         </div>

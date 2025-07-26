@@ -2,6 +2,8 @@ import Landing from './components/landing'
 import Dashboard from './components/Dashboard'
 import ClipsFolders from './components/ClipsFolders'
 import FolderDetail from './components/FolderDetail'
+import TermsOfService from './components/TermsOfService'
+import PrivacyPolicy from './components/PrivacyPolicy'
 import { SignedIn, UserButton, useAuth } from '@clerk/clerk-react'
 import VideoProcessor from './components/VideoProcessor'
 
@@ -19,6 +21,16 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // Terms of Service page - public access
+  if (path === '/terms') {
+    return <TermsOfService />;
+  }
+
+  // Privacy Policy page - public access
+  if (path === '/privacy') {
+    return <PrivacyPolicy />;
   }
 
   // Protected routes - require authentication
@@ -59,6 +71,18 @@ export default function App() {
                 </nav>
               </div>
               <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => window.location.href = '/terms'}
+                  className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
+                >
+                  Terms
+                </button>
+                <button
+                  onClick={() => window.location.href = '/privacy'}
+                  className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
+                >
+                  Privacy
+                </button>
                 <SignedIn>
                   <UserButton afterSignOutUrl="/" />
                 </SignedIn>
