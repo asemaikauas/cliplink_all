@@ -30,6 +30,8 @@ parts/
 sdist/
 var/
 wheels/
+# Allow frontend lib directory for i18n
+!frontend/src/lib/
 *.egg-info/
 .installed.cfg
 *.egg
