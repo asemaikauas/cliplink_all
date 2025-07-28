@@ -500,10 +500,10 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     localStorage.removeItem('cliplink_active_task_data');
                 } else {
                     // Continue polling on retry
-                    console.log(`🔄 Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
+                    console.log(`🔄 Retrying in 30 seconds... (${retryCount}/${maxRetries})`);
                 }
             }
-        }, 2000); // Poll every 2 seconds
+        }, 30000); // Poll every 30 seconds
     };
 
     const formatTime = (seconds: number): string => {
