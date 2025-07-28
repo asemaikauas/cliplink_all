@@ -183,27 +183,8 @@ const Dashboard = () => {
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-hidden">
-                {/* Your Videos and Quick Stats Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-                    {/* Your Videos Card */}
-                    <div className="bg-white rounded-lg p-6 shadow-sm border cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => window.location.href = '/clips'}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold mb-2 text-gray-900">📁 {t('dashboardYourVideos')}</h3>
-                                <p className="text-gray-600 text-sm">{t('dashboardVideosDesc')}</p>
-                            </div>
-                            <div className="text-2xl text-gray-400">→</div>
-                        </div>
-                        {userStats && (
-                            <div className="mt-4 flex items-center space-x-4 text-sm text-gray-500">
-                                <span>{userStats.total_videos} {t('dashboardVideosCount')}</span>
-                                <span>•</span>
-                                <span>{userStats.total_clips} {t('dashboardClipsCount')}</span>
-                            </div>
-                        )}
-                    </div>
-
+                {/* Quick Stats Section */}
+                <div className="max-w-md mx-auto mb-12">
                     {/* Quick Stats Card */}
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
                         <h3 className="text-lg font-semibold mb-4 text-gray-900">📊 {t('dashboardQuickStats')}</h3>
@@ -220,6 +201,10 @@ const Dashboard = () => {
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">{t('dashboardFailed')}</span>
                                     <span className="font-medium text-red-600">{userStats.videos_failed}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">{t('dashboardTotalClips')}</span>
+                                    <span className="font-medium text-blue-600">{userStats.total_clips}</span>
                                 </div>
                             </div>
                         ) : (

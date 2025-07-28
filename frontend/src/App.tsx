@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import Landing from './components/landing'
 import Dashboard from './components/Dashboard'
-import ClipsFolders from './components/ClipsFolders'
-import FolderDetail from './components/FolderDetail'
 import TermsOfService from './components/TermsOfService'
 import PrivacyPolicy from './components/PrivacyPolicy'
 import { SignedIn, UserButton, useAuth } from '@clerk/clerk-react'
@@ -50,7 +48,7 @@ export default function App() {
   }
 
   // Protected routes - require authentication
-  if (path === '/dashboard' || path === '/clips' || path.startsWith('/clips/') || path === '/process') {
+  if (path === '/dashboard' || path === '/process') {
     if (!isSignedIn) {
       // Redirect to landing page if not authenticated
       window.location.href = '/';
@@ -75,15 +73,6 @@ export default function App() {
                   >
                     {t('navDashboard')}
                   </button>
-                  <button
-                    onClick={() => window.location.href = '/clips'}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${path === '/clips' || path.startsWith('/clips/')
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                      }`}
-                  >
-                    {t('navMyVideos')}
-                  </button>
                 </nav>
               </div>
               <div className="flex items-center space-x-4">
@@ -96,8 +85,6 @@ export default function App() {
           </div>
         </header>
         {path === '/dashboard' && <Dashboard />}
-        {path === '/clips' && <ClipsFolders />}
-        {path.startsWith('/clips/') && <FolderDetail />}
         {path === '/process' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="mb-6">
