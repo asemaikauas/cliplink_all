@@ -893,8 +893,10 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                             <h3 className="text-lg font-semibold text-gray-900 mb-2">
                                 Video Processing Settings
                             </h3>
-                            <p className="text-gray-600 text-sm leading-relaxed">
-                                Configure your video processing preferences
+                            <p className="text-gray-600 text-md leading-relaxed">
+                                Does this video involve two or more speakers speaking in
+                                the front of the camera?
+                                (mostly in podcast, interview style videos)
                             </p>
                         </div>
 
@@ -903,22 +905,18 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                 onClick={() => processVideoWithSettings(true)}
                                 className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                             >
-                                ✅ Yes - Use smart face detection
+                                Yes
                             </button>
 
                             <button
                                 onClick={() => processVideoWithSettings(false)}
                                 className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
                             >
-                                ❌ No - Use standard cropping
+                                No
                             </button>
                         </div>
 
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                            <p className="text-xs text-gray-500 text-center">
-                                💡 Face detection works best for podcasts and interview-style videos with multiple speakers
-                            </p>
-                        </div>
+
 
                         <button
                             onClick={() => setShowFaceDetectionModal(false)}
