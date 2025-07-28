@@ -757,7 +757,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
             {/* Generated Clips */}
             {clips.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 overflow-hidden">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-lg font-semibold text-gray-900">
                             Generated Clips ({clips.length})
@@ -770,17 +770,17 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                         {clips.map((clip) => (
-                            <div key={clip.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                            <div key={clip.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow max-w-full">
                                 {/* Thumbnail Container - 3:4 Aspect Ratio */}
-                                <div className="relative aspect-[3/4] bg-gray-100 cursor-pointer group" onClick={() => setSelectedClip(clip)}>
+                                <div className="relative aspect-[3/4] bg-gray-100 cursor-pointer group w-full" onClick={() => setSelectedClip(clip)}>
                                     {clip.thumbnail_url && !thumbnailErrors.has(clip.id) ? (
                                         <>
                                             <img
                                                 src={clip.thumbnail_url}
                                                 alt={`${clip.title} thumbnail`}
-                                                className="w-full h-full object-cover"
+                                                className="w-full h-full object-cover max-w-full"
                                                 onError={() => handleThumbnailError(clip.id)}
                                             />
                                             {/* Play button overlay */}

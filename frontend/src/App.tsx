@@ -71,18 +71,6 @@ export default function App() {
                 </nav>
               </div>
               <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => window.location.href = '/terms'}
-                  className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
-                >
-                  Terms
-                </button>
-                <button
-                  onClick={() => window.location.href = '/privacy'}
-                  className="text-gray-600 hover:text-gray-900 text-sm transition-colors"
-                >
-                  Privacy
-                </button>
                 <SignedIn>
                   <UserButton afterSignOutUrl="/" />
                 </SignedIn>
