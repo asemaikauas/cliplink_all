@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
 import { apiUrl } from '../config';
+import { t } from '../lib/i18n';
+import LanguageSelector from './shared/LanguageSelector';
 
 const features = [
     {
@@ -9,8 +11,8 @@ const features = [
                 <svg className="w-10 h-10" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
             </span>
         ),
-        title: 'AI-Powered Editing',
-        desc: 'Let AI find the best moments and create viral clips for you.'
+        titleKey: 'featureAITitle',
+        descKey: 'featureAIDesc'
     },
     {
         icon: (
@@ -18,8 +20,8 @@ const features = [
                 <svg className="w-10 h-10" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" /><path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8v8H8z" /></svg>
             </span>
         ),
-        title: 'Nothing Needed',
-        desc: 'Just drop a link. No editing or technical skills required.'
+        titleKey: 'featureEasyTitle',
+        descKey: 'featureEasyDesc'
     },
     {
         icon: (
@@ -27,14 +29,10 @@ const features = [
                 <svg className="w-10 h-10" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" /><circle cx="12" cy="12" r="10" /></svg>
             </span>
         ),
-        title: 'Fast & Free',
-        desc: 'Get up to 10 clips in seconds. Start for free.'
+        titleKey: 'featureFastTitle',
+        descKey: 'featureFastDesc'
     },
 ];
-
-// Removed unused socials array
-
-// Removed unused steps array
 
 // Function to save URL to localStorage
 const saveUrlForLater = (url: string) => {
@@ -59,6 +57,17 @@ export default function EtailLanding() {
     const [transcript, setTranscript] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [, forceUpdate] = useState({});
+
+    // Listen for language changes to re-render
+    useEffect(() => {
+        const handleLanguageChange = () => {
+            forceUpdate({});
+        };
+
+        window.addEventListener('languageChanged', handleLanguageChange);
+        return () => window.removeEventListener('languageChanged', handleLanguageChange);
+    }, []);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const handleGetClips = async () => {
@@ -82,7 +91,6 @@ export default function EtailLanding() {
         setLoading(false);
     };
 
-
     return (
         <div className="min-h-screen flex flex-col bg-black relative overflow-x-hidden font-sans">
             <div className="absolute inset-0 z-0 pointer-events-none">
@@ -91,12 +99,13 @@ export default function EtailLanding() {
             </div>
 
             <header className="sticky top-0 w-full z-20 bg-black/60 backdrop-blur-md flex justify-between items-center px-4 sm:px-8 py-4 border-b border-purple-900">
-                <div className="text-xl sm:text-2xl font-extrabold text-purple-400 tracking-tight">ClipLink</div>
+                <div className="text-xl sm:text-2xl font-extrabold text-purple-400 tracking-tight">{t('appName')}</div>
                 <div className="flex items-center gap-2 sm:gap-4">
+                    <LanguageSelector variant="compact" />
                     <SignedOut>
                         <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                             <button className="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-4 sm:px-6 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base flex-shrink-0">
-                                Sign In
+                                {t('navSignIn')}
                             </button>
                         </SignInButton>
                     </SignedOut>
@@ -105,7 +114,7 @@ export default function EtailLanding() {
                             onClick={() => window.location.href = '/dashboard'}
                             className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-full font-semibold shadow-lg hover:scale-105 transition-all text-sm sm:text-base flex-shrink-0"
                         >
-                            Dashboard
+                            {t('navDashboard')}
                         </button>
                         <div className="flex-shrink-0">
                             <UserButton afterSignOutUrl="/" />
@@ -116,10 +125,10 @@ export default function EtailLanding() {
 
             <section className="flex flex-col items-center justify-center flex-1 py-20 z-10">
                 <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold text-center bg-gradient-to-r from-purple-400 via-white to-purple-600 bg-clip-text text-transparent drop-shadow-lg mb-6 px-4">
-                    Instantly Go Viral
+                    {t('landingHeadline')}
                 </h1>
                 <p className="text-lg sm:text-xl md:text-2xl text-gray-300 text-center mb-12 max-w-2xl px-4">
-                    Turn any long video into up to 10 viral clips for Shorts, TikTok, and Reels. No editing. No hassle. Just a link.
+                    {t('landingSubtitle')}
                 </p>
                 <div className="w-full flex flex-col items-center mt-6 px-4 space-y-4">
                     {/* Input Container */}
@@ -133,7 +142,7 @@ export default function EtailLanding() {
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            placeholder="Paste YouTube Link Here.."
+                            placeholder={t('landingInputPlaceholder')}
                             className="w-full bg-transparent outline-none text-gray-200 text-lg sm:text-xl placeholder-gray-500 px-6 py-4 rounded-full border-0"
                         />
                     </div>
@@ -146,7 +155,7 @@ export default function EtailLanding() {
                                     onClick={() => saveUrlForLater(inputValue)}
                                     className="px-8 py-4 text-white font-bold text-lg sm:text-xl rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap shadow-lg"
                                 >
-                                    Get free clips
+                                    {t('landingCTA')}
                                 </button>
                             </SignInButton>
                         </SignedOut>
@@ -157,17 +166,17 @@ export default function EtailLanding() {
                                         saveUrlForLater(inputValue);
                                         window.location.href = '/dashboard';
                                     } else {
-                                        alert('Please enter a YouTube URL first');
+                                        alert(t('errorYouTubeUrl'));
                                     }
                                 }}
                                 className="px-8 py-4 text-white font-bold text-lg sm:text-xl rounded-full bg-purple-500 hover:bg-purple-600 transition-all whitespace-nowrap shadow-lg"
                             >
-                                Get free clips
+                                {t('landingCTA')}
                             </button>
                         </SignedIn>
                     </div>
 
-                    <span className="text-gray-400 text-sm sm:text-base text-center">No signup required. 100% free to start.</span>
+                    <span className="text-gray-400 text-sm sm:text-base text-center">{t('landingSubCTA')}</span>
                 </div>
                 {error && <div className="text-red-500 mt-4">{error}</div>}
                 {transcript && (
@@ -185,23 +194,23 @@ export default function EtailLanding() {
                             <div className="mb-6 flex items-center justify-center">
                                 {f.icon}
                             </div>
-                            <h3 className="text-2xl font-extrabold text-purple-200 mb-3">{f.title}</h3>
-                            <p className="text-gray-400 text-lg">{f.desc}</p>
+                            <h3 className="text-2xl font-extrabold text-purple-200 mb-3">{t(f.titleKey as keyof typeof import('../lib/i18n').translations)}</h3>
+                            <p className="text-gray-400 text-lg">{t(f.descKey as keyof typeof import('../lib/i18n').translations)}</p>
                         </div>
                     ))}
                 </div>
             </section>
 
             <section id="get-started" className="w-full flex flex-col items-center py-20 bg-gradient-to-t from-black via-[#18181a] to-black z-10">
-                <h2 className="text-3xl md:text-4xl font-extrabold text-center text-purple-200 mb-6">Start for Free</h2>
-                <p className="text-lg text-gray-300 mb-8 text-center">No credit card required. Get your first viral clips in seconds.</p>
+                <h2 className="text-3xl md:text-4xl font-extrabold text-center text-purple-200 mb-6">{t('startForFree')}</h2>
+                <p className="text-lg text-gray-300 mb-8 text-center">{t('noCreditCard')}</p>
                 <SignedOut>
                     <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                         <button
                             onClick={() => saveUrlForLater(inputValue)}
                             className="bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold text-xl px-12 py-5 rounded-full shadow-xl hover:scale-105 transition-all"
                         >
-                            Try ClipLink Now
+                            {t('landingTryNow')}
                         </button>
                     </SignInButton>
                 </SignedOut>
@@ -210,26 +219,26 @@ export default function EtailLanding() {
                         onClick={() => window.location.href = '/dashboard'}
                         className="bg-gradient-to-r from-purple-500 to-purple-700 text-white font-bold text-xl px-12 py-5 rounded-full shadow-xl hover:scale-105 transition-all"
                     >
-                        Go to Home
+                        {t('landingGoToHome')}
                     </button>
                 </SignedIn>
             </section>
 
             <footer className="w-full py-6 flex flex-col md:flex-row justify-between items-center bg-black/80 border-t border-purple-900 z-20 px-8">
-                <span className="text-gray-500 text-sm">© {new Date().getFullYear()} ClipLink. All rights reserved.</span>
+                <span className="text-gray-500 text-sm">© {new Date().getFullYear()} {t('appName')}. {t('copyright')}</span>
                 <div className="flex space-x-4 mt-2 md:mt-0">
-                    <a href="mailto:azk2021@nyu.edu?subject=Hello&body=I wanted to reach out..." className="text-purple-400 hover:text-purple-200 transition-colors">Contact</a>
+                    <a href="mailto:azk2021@nyu.edu?subject=Hello&body=I wanted to reach out..." className="text-purple-400 hover:text-purple-200 transition-colors">{t('contact')}</a>
                     <button
                         onClick={() => window.location.href = '/terms'}
                         className="text-purple-400 hover:text-purple-200 transition-colors"
                     >
-                        Terms of Service
+                        {t('termsOfService')}
                     </button>
                     <button
                         onClick={() => window.location.href = '/privacy'}
                         className="text-purple-400 hover:text-purple-200 transition-colors"
                     >
-                        Privacy Policy
+                        {t('privacyPolicy')}
                     </button>
                 </div>
             </footer>

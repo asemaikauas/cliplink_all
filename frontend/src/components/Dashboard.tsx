@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import VideoProcessor from './VideoProcessor';
 import { getPendingUrl, clearPendingUrl } from './landing';
 import { apiUrl, config } from '../config';
+import { t } from '../lib/i18n';
 
 interface UserData {
     id: string;
@@ -30,6 +31,17 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [pendingUrl, setPendingUrl] = useState<string>('');
+    const [, forceUpdate] = useState({});
+
+    // Listen for language changes to re-render
+    useEffect(() => {
+        const handleLanguageChange = () => {
+            forceUpdate({});
+        };
+
+        window.addEventListener('languageChanged', handleLanguageChange);
+        return () => window.removeEventListener('languageChanged', handleLanguageChange);
+    }, []);
 
     // Check for pending URL from landing page
     useEffect(() => {
@@ -136,17 +148,13 @@ const Dashboard = () => {
         initializeDashboard();
     }, [user]); // Only run when user changes
 
-    // const refreshStats = async () => {
-    //     await fetchUserStats();
-    // };
-
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Loading dashboard...</p>
-                    <p className="text-sm text-gray-500">Making API calls to backend...</p>
+                    <p className="mt-4 text-gray-600">{t('loadingDashboard')}</p>
+                    <p className="text-sm text-gray-500">{t('loadingApiCalls')}</p>
                 </div>
             </div>
         );
@@ -160,13 +168,13 @@ const Dashboard = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900">
-                                Welcome back{user?.firstName ? `, ${user.firstName}` : ''}! 👋
+                                {t('dashboardWelcome')}{user?.firstName ? `, ${user.firstName}` : ''}! 👋
                             </h1>
                         </div>
                         {userStats && (
                             <div className="text-right">
                                 <div className="text-2xl font-bold text-blue-600">{userStats.total_clips}</div>
-                                <div className="text-sm text-gray-500">Total Clips</div>
+                                <div className="text-sm text-gray-500">{t('dashboardTotalClips')}</div>
                             </div>
                         )}
                     </div>
@@ -182,40 +190,40 @@ const Dashboard = () => {
                         onClick={() => window.location.href = '/clips'}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <h3 className="text-lg font-semibold mb-2 text-gray-900">📁 Your Videos</h3>
-                                <p className="text-gray-600 text-sm">Browse and manage your processed videos</p>
+                                <h3 className="text-lg font-semibold mb-2 text-gray-900">📁 {t('dashboardYourVideos')}</h3>
+                                <p className="text-gray-600 text-sm">{t('dashboardVideosDesc')}</p>
                             </div>
                             <div className="text-2xl text-gray-400">→</div>
                         </div>
                         {userStats && (
                             <div className="mt-4 flex items-center space-x-4 text-sm text-gray-500">
-                                <span>{userStats.total_videos} videos</span>
+                                <span>{userStats.total_videos} {t('dashboardVideosCount')}</span>
                                 <span>•</span>
-                                <span>{userStats.total_clips} clips</span>
+                                <span>{userStats.total_clips} {t('dashboardClipsCount')}</span>
                             </div>
                         )}
                     </div>
 
                     {/* Quick Stats Card */}
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
-                        <h3 className="text-lg font-semibold mb-4 text-gray-900">📊 Quick Stats</h3>
+                        <h3 className="text-lg font-semibold mb-4 text-gray-900">📊 {t('dashboardQuickStats')}</h3>
                         {userStats ? (
                             <div className="space-y-3">
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Processing</span>
+                                    <span className="text-gray-600">{t('dashboardProcessing')}</span>
                                     <span className="font-medium text-orange-600">{userStats.videos_processing}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Completed</span>
+                                    <span className="text-gray-600">{t('dashboardCompleted')}</span>
                                     <span className="font-medium text-green-600">{userStats.videos_completed}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Failed</span>
+                                    <span className="text-gray-600">{t('dashboardFailed')}</span>
                                     <span className="font-medium text-red-600">{userStats.videos_failed}</span>
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-center text-gray-500">Loading stats...</div>
+                            <div className="text-center text-gray-500">{t('loadingStats')}</div>
                         )}
                     </div>
                 </div>
@@ -231,32 +239,32 @@ const Dashboard = () => {
                 <div className="bg-white overflow-hidden shadow rounded-lg mt-16">
                     <div className="px-4 py-5 sm:p-6">
                         <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                            Account Information
+                            {t('dashboardAccountInfo')}
                         </h3>
                         {userData ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <span className="text-sm font-medium text-gray-500">Email:</span>
+                                    <span className="text-sm font-medium text-gray-500">{t('accountEmail')}</span>
                                     <p className="text-sm text-gray-900">{userData.email}</p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-500">Name:</span>
+                                    <span className="text-sm font-medium text-gray-500">{t('accountName')}</span>
                                     <p className="text-sm text-gray-900">
                                         {userData.first_name || userData.last_name
                                             ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim()
-                                            : 'Not provided'
+                                            : t('accountNotProvided')
                                         }
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-gray-500">Member Since:</span>
+                                    <span className="text-sm font-medium text-gray-500">{t('accountMemberSince')}</span>
                                     <p className="text-sm text-gray-900">
                                         {new Date(userData.created_at).toLocaleDateString()}
                                     </p>
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-gray-500">Loading account information...</p>
+                            <p className="text-gray-500">{t('accountLoading')}</p>
                         )}
                     </div>
                 </div>

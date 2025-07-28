@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import VideoPlayerModal from './VideoPlayerModal';
 import { apiUrl, clipUrl, config } from '../config';
+import { t } from '../lib/i18n';
 
 interface VideoProcessorProps {
     initialUrl?: string;
@@ -50,6 +51,17 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
     const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set());
     const [isRestoringTask, setIsRestoringTask] = useState(false);
+    const [, forceUpdate] = useState({});
+
+    // Listen for language changes to re-render
+    useEffect(() => {
+        const handleLanguageChange = () => {
+            forceUpdate({});
+        };
+
+        window.addEventListener('languageChanged', handleLanguageChange);
+        return () => window.removeEventListener('languageChanged', handleLanguageChange);
+    }, []);
 
     // Authentication check
     if (!isLoaded) {
@@ -57,7 +69,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
             <div className="flex items-center justify-center min-h-64">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="mt-2 text-gray-600">Loading...</p>
+                    <p className="mt-2 text-gray-600">{t('loading')}</p>
                 </div>
             </div>
         );
@@ -68,14 +80,14 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
             <div className="flex items-center justify-center min-h-64">
                 <div className="text-center max-w-md mx-auto p-8 bg-white rounded-lg shadow-md">
                     <div className="text-blue-600 text-4xl mb-4">🔐</div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Authentication Required</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('authRequired')}</h3>
                     <p className="text-gray-600 mb-4">
-                        Please sign in to process YouTube videos and create clips. Your videos will be saved to your account and accessible across devices.
+                        {t('authMessage')}
                     </p>
                     <div className="text-sm text-gray-500">
-                        ✅ Secure video processing<br />
-                        ✅ Persistent video storage<br />
-                        ✅ Access from any device
+                        ✅ {t('authFeatureSecure')}<br />
+                        ✅ {t('authFeatureStorage')}<br />
+                        ✅ {t('authFeatureAccess')}
                     </div>
                 </div>
             </div>
@@ -502,11 +514,11 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
     const getWaitTimeDisplay = (task: ProcessingTask): string => {
         if (task.status === 'done') {
-            return 'Ready! 🎉';
+            return t('statusReady');
         }
 
         if (task.status === 'failed') {
-            return 'Failed ❌';
+            return t('statusFailed');
         }
 
         // Map stages to estimated completion times (in minutes)
@@ -538,15 +550,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
 
         // Format the display text with more dynamic messaging
         if (displayMinutes === 1) {
-            return `Almost done! 1 min ⏳`;
-        } else if (displayMinutes <= 2) {
-            return `Wait: ${displayMinutes} min ⏳`;
-        } else if (displayMinutes <= 3) {
-            return `Wait: ${displayMinutes} min ⏳`;
-        } else if (displayMinutes >= 7) {
-            return `Wait: ${displayMinutes} min ⏳`;
+            return `${t('statusAlmostDone')} 1 ${t('statusMinute')} ⏳`;
         } else {
-            return `Wait: ${displayMinutes} min ⏳`;
+            return `${t('statusWait')} ${displayMinutes} ${t('statusMinute')} ⏳`;
         }
     };
 
@@ -631,14 +637,14 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
         <div className="space-y-6">
             {/* Section Header */}
             <div className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">🎬 Processing Progress</h2>
-                <p className="text-gray-600">Transform YouTube videos into viral vertical clips with AI-powered analysis</p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">🎬 {t('processorProgressTitle')}</h2>
+                <p className="text-gray-600">{t('processorProgressDesc')}</p>
             </div>
 
             {/* URL Input Section */}
             <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Generate Clips from YouTube Video
+                    {t('processorGenerateTitle')}
                 </h3>
 
                 <div className="flex gap-4">
@@ -646,7 +652,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                         type="text"
                         value={youtubeUrl}
                         onChange={(e) => setYoutubeUrl(e.target.value)}
-                        placeholder="Paste YouTube URL here..."
+                        placeholder={t('processorUrlPlaceholder')}
                         className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         disabled={isProcessing || hasActiveTask}
                     />
@@ -655,14 +661,14 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                         disabled={isProcessing || hasActiveTask || !youtubeUrl.trim()}
                         className="px-6 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                     >
-                        {isProcessing || hasActiveTask ? 'Processing...' : 'Generate Clips'}
+                        {isProcessing || hasActiveTask ? t('processorProcessingButton') : t('processorGenerateButton')}
                     </button>
                 </div>
 
                 {hasActiveTask && !isProcessing && (
                     <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
                         <p className="text-yellow-800 text-sm">
-                            ⚠️ You have an active processing task. Please wait for it to complete before starting a new one.
+                            {t('errorActiveTask')}
                         </p>
                     </div>
                 )}
@@ -674,8 +680,8 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     <div className="flex items-center">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
                         <div className="text-blue-800">
-                            <h4 className="font-medium">Restoring Session</h4>
-                            <p className="text-sm mt-1">Checking for ongoing video processing...</p>
+                            <h4 className="font-medium">{t('sessionRestoring')}</h4>
+                            <p className="text-sm mt-1">{t('sessionRestoringDesc')}</p>
                         </div>
                     </div>
                 </div>
@@ -686,7 +692,7 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 <div className="bg-red-50 border border-red-200 rounded-md p-4">
                     <div className="flex justify-between items-start">
                         <div className="text-red-800">
-                            <h4 className="font-medium">Error</h4>
+                            <h4 className="font-medium">{t('errorGeneral')}</h4>
                             <p className="text-sm mt-1">{error}</p>
                         </div>
                         <div className="flex gap-2">
@@ -698,9 +704,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                         setHasActiveTask(true);
                                         pollTaskProgress(currentTask.task_id);
                                     }}
-                                    className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+                                    className="text-sm bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded transition-colors"
                                 >
-                                    Retry
+                                    {t('errorTryAgain')}
                                 </button>
                             )}
                             <button
@@ -712,9 +718,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                                         setError('Backend connection failed. Please check if the backend is running.');
                                     }
                                 }}
-                                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                                className="text-blue-400 hover:text-blue-600"
                             >
-                                Test Connection
+                                ✕
                             </button>
                         </div>
                     </div>
@@ -858,9 +864,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                     <div className="text-gray-400 mb-4">
                         <div className="text-6xl mb-4">🎬</div>
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">No clips yet</h3>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">{t('noClipsYet')}</h3>
                         <p className="text-gray-500">
-                            Enter a YouTube URL above and click "Generate Clips" to get started.
+                            {t('noClipsMessage')}
                         </p>
                     </div>
                 </div>

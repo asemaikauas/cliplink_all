@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { apiUrl } from '../config';
+import { t } from '../lib/i18n';
 
 interface VideoFolder {
     id: string;
@@ -17,6 +18,17 @@ const ClipsFolders = () => {
     const [folders, setFolders] = useState<VideoFolder[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [, forceUpdate] = useState({});
+
+    // Listen for language changes to re-render
+    useEffect(() => {
+        const handleLanguageChange = () => {
+            forceUpdate({});
+        };
+
+        window.addEventListener('languageChanged', handleLanguageChange);
+        return () => window.removeEventListener('languageChanged', handleLanguageChange);
+    }, []);
 
     useEffect(() => {
         fetchFolders();
@@ -56,7 +68,7 @@ const ClipsFolders = () => {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Loading your clip folders...</p>
+                    <p className="mt-4 text-gray-600">{t('loadingFolders')}</p>
                 </div>
             </div>
         );
@@ -67,13 +79,13 @@ const ClipsFolders = () => {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                     <div className="text-red-500 text-xl mb-4">⚠️</div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Folders</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('errorLoadingFolders')}</h2>
                     <p className="text-gray-600 mb-4">{error}</p>
                     <button
                         onClick={fetchFolders}
                         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                     >
-                        Try Again
+                        {t('errorTryAgain')}
                     </button>
                 </div>
             </div>
@@ -85,24 +97,24 @@ const ClipsFolders = () => {
             <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 <div className="px-4 py-6 sm:px-0">
                     <div className="mb-8">
-                        <h1 className="text-2xl font-bold text-gray-900">Your Clip Folders</h1>
+                        <h1 className="text-2xl font-bold text-gray-900">{t('clipsTitle')}</h1>
                         <p className="mt-2 text-sm text-gray-600">
-                            Each folder contains clips generated from a YouTube video
+                            {t('clipsDesc')}
                         </p>
                     </div>
 
                     {folders.length === 0 ? (
                         <div className="text-center py-12">
                             <div className="text-gray-400 text-4xl mb-4">📁</div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No clip folders yet</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">{t('clipsEmpty')}</h3>
                             <p className="text-gray-600 mb-4">
-                                Start by creating some clips from a YouTube video
+                                {t('clipsEmptyDesc')}
                             </p>
                             <button
                                 onClick={() => window.location.href = '/dashboard'}
                                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                             >
-                                Go to Home
+                                {t('clipsGoHome')}
                             </button>
                         </div>
                     ) : (
@@ -134,7 +146,7 @@ const ClipsFolders = () => {
                                         <div className="flex items-center justify-between text-sm text-gray-600">
                                             <span className="flex items-center">
                                                 <span className="mr-1">✂️</span>
-                                                {folder.clips_count} clips
+                                                {folder.clips_count} {t('clipsCount')}
                                             </span>
                                             <span>
                                                 {new Date(folder.created_at).toLocaleDateString()}
