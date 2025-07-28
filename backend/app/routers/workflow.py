@@ -108,13 +108,16 @@ class ComprehensiveWorkflowRequest(BaseModel):
     smoothing_strength: Optional[str] = "very_high"  # low, medium, high, very_high
     burn_subtitles: Optional[bool] = True  # Whether to burn subtitles into videos (always uses speech synchronization)
     font_size: Optional[int] = 15  # Font size for subtitles (12-120)
-    export_codec: Optional[str] = "h264"  # Video codec (h264, h265)
+    export_codec: Optional[str] = "h264"  # Video codec (h264, h265, av1)
     priority: Optional[str] = "normal"  # low, normal, high
     notify_webhook: Optional[str] = None  # Optional webhook URL for completion notification
     
     # 🔊 NEW AUDIO SYNC OPTIONS
     enable_audio_sync_fix: Optional[bool] = True  # Enable enhanced audio sync preservation
     audio_offset_ms: Optional[float] = 0.0  # Manual audio offset correction in milliseconds
+    
+    # 👁️ FACE DETECTION OPTIONS
+    use_face_detection: Optional[bool] = False  # Enable OpenCV face detection for intelligent cropping (for podcasts/multi-speaker videos)
 
 class FastWorkflowRequest(BaseModel):
     """Request for fast workflow: skip transcript/Gemini, use provided segments"""
@@ -502,7 +505,8 @@ async def _process_video_workflow_async(
     font_size: int = 15,
     export_codec: str = "h264",
     enable_audio_sync_fix: bool = True,
-    audio_offset_ms: float = 0.0
+    audio_offset_ms: float = 0.0,
+    use_face_detection: bool = False
 ):
     """
     Optimized workflow following exact steps:
@@ -573,11 +577,29 @@ async def _process_video_workflow_async(
                 print(f"❌ Failed to cut segment {i+1}")
                 continue
             
-            # Now apply vertical cropping using pure FFmpeg (no MoviePy)
+            # Now apply vertical cropping - use face detection if enabled, otherwise center crop
             vertical_clip_path = video_path.parent / f"{safe_title}_vertical_{i+1}.mp4"
             
-            # Use FFmpeg directly for vertical cropping with center crop
-            crop_success = await _ffmpeg_vertical_crop(horizontal_clip_path, vertical_clip_path)
+            if use_face_detection:
+                # Use OpenCV-based intelligent face detection cropping
+                print(f"   👁️ Using face detection for intelligent cropping...")
+                from app.services.vertical_crop_async import crop_video_to_vertical_async
+                
+                crop_result = await crop_video_to_vertical_async(
+                    input_path=horizontal_clip_path,
+                    output_path=vertical_clip_path,
+                    use_speaker_detection=True,
+                    use_smart_scene_detection=False,
+                    smoothing_strength=smoothing_strength,
+                    task_id=f"{task_id}_seg_{i+1}" if task_id else None
+                )
+                crop_success = crop_result.get("success", False)
+                if not crop_success:
+                    print(f"   ⚠️ Face detection cropping failed: {crop_result.get('error', 'Unknown error')}")
+            else:
+                # Use simple FFmpeg center cropping (default behavior)
+                print(f"   📐 Using center cropping...")
+                crop_success = await _ffmpeg_vertical_crop(horizontal_clip_path, vertical_clip_path)
             
             if crop_success:
                 vertical_clips.append(vertical_clip_path)
@@ -1544,7 +1566,8 @@ async def process_comprehensive_workflow_async(
                 font_size=request.font_size or 32,
                 export_codec=request.export_codec or "libx264",
                 enable_audio_sync_fix=request.enable_audio_sync_fix if request.enable_audio_sync_fix is not None else True,
-                audio_offset_ms=request.audio_offset_ms or 0
+                audio_offset_ms=request.audio_offset_ms or 0,
+                use_face_detection=request.use_face_detection if request.use_face_detection is not None else False
             ))
             print(f"✅ Background task submitted successfully")
         except Exception as e:
@@ -1592,7 +1615,8 @@ async def _process_comprehensive_with_db_updates_async(
     font_size: int = 32,
     export_codec: str = "libx264",
     enable_audio_sync_fix: bool = True,
-    audio_offset_ms: float = 0.0
+    audio_offset_ms: float = 0.0,
+    use_face_detection: bool = False
 ):
     """
     Process comprehensive workflow and update database records for authenticated user
@@ -1629,7 +1653,8 @@ async def _process_comprehensive_with_db_updates_async(
                 font_size=font_size,
                 export_codec=export_codec,
                 enable_audio_sync_fix=enable_audio_sync_fix,
-                audio_offset_ms=audio_offset_ms
+                audio_offset_ms=audio_offset_ms,
+                use_face_detection=use_face_detection
             )
             
             # Update video status and save clips to database

@@ -192,8 +192,13 @@ class BurnInRenderer:
             force_style = self._build_force_style(font_size=font_size)
             
             # Build FFmpeg command
-            # Use libx264 for h264, libx265 for h265
-            video_codec = "libx264" if export_codec == "h264" else f"lib{export_codec}"
+            # Map export codecs to FFmpeg codec names
+            codec_mapping = {
+                "h264": "libx264",
+                "h265": "libx265", 
+                "av1": "libaom-av1"
+            }
+            video_codec = codec_mapping.get(export_codec, "libx264")
             
             # Escape the SRT path for FFmpeg (handle spaces and special characters)
             # Also ensure the path is clean ASCII

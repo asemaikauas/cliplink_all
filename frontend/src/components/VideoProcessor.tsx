@@ -52,6 +52,9 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
     const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set());
     const [isRestoringTask, setIsRestoringTask] = useState(false);
     const [, forceUpdate] = useState({});
+    const [showFaceDetectionModal, setShowFaceDetectionModal] = useState(false);
+    const [useFaceDetection, setUseFaceDetection] = useState(false);
+    const [exportCodec, setExportCodec] = useState('h264');
 
     // Listen for language changes to re-render
     useEffect(() => {
@@ -352,8 +355,16 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
             return;
         }
 
-        setIsProcessing(true);
+        // Show face detection modal first
         setError(null);
+        setShowFaceDetectionModal(true);
+    };
+
+    const processVideoWithSettings = async (useFaceDetection: boolean) => {
+        setShowFaceDetectionModal(false);
+        setUseFaceDetection(useFaceDetection);
+
+        setIsProcessing(true);
         setCurrentTask(null);
         setHasActiveTask(true);
         setThumbnailErrors(new Set());
@@ -376,7 +387,8 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                     smoothing_strength: 'very_high',
                     burn_subtitles: true,
                     font_size: 15,
-                    export_codec: 'h264'
+                    export_codec: 'h264',
+                    use_face_detection: useFaceDetection
                 })
             });
 
@@ -868,6 +880,52 @@ const VideoProcessor: React.FC<VideoProcessorProps> = ({ initialUrl = '', onUrlC
                         <p className="text-gray-500">
                             {t('noClipsMessage')}
                         </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Face Detection Modal */}
+            {showFaceDetectionModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                        <div className="text-center mb-6">
+                            <div className="text-4xl mb-4">⚙️</div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                Video Processing Settings
+                            </h3>
+                            <p className="text-gray-600 text-sm leading-relaxed">
+                                Configure your video processing preferences
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => processVideoWithSettings(true)}
+                                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                            >
+                                ✅ Yes - Use smart face detection
+                            </button>
+
+                            <button
+                                onClick={() => processVideoWithSettings(false)}
+                                className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+                            >
+                                ❌ No - Use standard cropping
+                            </button>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                            <p className="text-xs text-gray-500 text-center">
+                                💡 Face detection works best for podcasts and interview-style videos with multiple speakers
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={() => setShowFaceDetectionModal(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold"
+                        >
+                            ×
+                        </button>
                     </div>
                 </div>
             )}

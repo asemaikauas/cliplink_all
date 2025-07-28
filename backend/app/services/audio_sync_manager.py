@@ -282,7 +282,13 @@ class AudioSyncManager:
             logger.info("🔊 Burning subtitles with sync preservation...")
             
             # Build enhanced FFmpeg command
-            video_codec = "libx264" if export_codec == "h264" else f"lib{export_codec}"
+            # Map export codecs to FFmpeg codec names
+            codec_mapping = {
+                "h264": "libx264",
+                "h265": "libx265", 
+                "av1": "libaom-av1"
+            }
+            video_codec = codec_mapping.get(export_codec, "libx264")
             escaped_srt_path = srt_path.replace("\\", "\\\\").replace(":", "\\:")
             
             cmd = [

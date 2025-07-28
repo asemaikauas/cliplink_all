@@ -113,7 +113,7 @@ async def create_subtitles(
     video_file: UploadFile = File(..., description="Video file to process"),
     burn_in: bool = Form(True, description="Whether to burn subtitles into video"),
     font_size: int = Form(14, ge=12, le=120, description="Font size in pixels"),
-    export_codec: str = Form("h264", description="Video codec for output (h264, h265, etc.)"),
+    export_codec: str = Form("h264", description="Video codec for output (h264, h265, av1)"),
     disable_vad: bool = Form(True, description="Disable VAD filtering (enabled by default for better performance)"),
     speech_sync: bool = Form(False, description="Enable true speech synchronization using word-level timestamps"),
     background_tasks: BackgroundTasks = None
