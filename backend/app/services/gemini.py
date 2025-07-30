@@ -63,7 +63,7 @@ async def analyze_transcript_with_gemini(transcript_data: Dict[str, Any]) -> Dic
 
      1. Use the transcript + timecodes to pick exact start & end in seconds (floats not allowed).  
      2. Duration for every segment: 40 ≤ (end − start) ≤ 90.  
-     3. Create 6 and more segments if the video is longer than 1 hour (60 minutes).
+     3. Create 6 and more segments if and only if the video is longer than 1 hour (60 minutes).
 
      
      Output Format: 
