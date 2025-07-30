@@ -16,6 +16,7 @@ from pydub import AudioSegment
 from moviepy import VideoFileClip, AudioFileClip
 import subprocess
 import json
+import mediapipe as mp
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -35,8 +36,12 @@ class VerticalCropService:
             logger.warning(f"⚠️ Could not initialize VAD: {e}")
             self.vad = None
         
-        # Try to load OpenCV DNN model for face detection
-        self.face_net = self._load_face_detection_model()
+        # Initialize MediaPipe Face Detection
+        self.mp_face_detection = mp.solutions.face_detection
+        self.face_detector = self.mp_face_detection.FaceDetection(
+            model_selection=1,  # 1 for videos (better range), 0 for close-up
+            min_detection_confidence=0.3  # Lower threshold for better detection
+        )
         
         # 🎯 ДОБАВЛЯЕМ СТАБИЛИЗАЦИЮ
         self.previous_crop_center = None
@@ -46,50 +51,50 @@ class VerticalCropService:
         self.recent_centers = []      # История недавних центров
     
     def _load_face_detection_model(self):
-        """Load OpenCV DNN model for face detection"""
-        try:
-            # You'll need to download these models
-            prototxt_path = "models/deploy.prototxt"
-            model_path = "models/res10_300x300_ssd_iter_140000_fp16.caffemodel"
-            
-            if Path(prototxt_path).exists() and Path(model_path).exists():
-                net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
-                logger.info("✅ Face detection model loaded")
-                return net
-            else:
-                logger.warning("⚠️ Face detection models not found. Using center-crop fallback.")
-                return None
-        except Exception as e:
-            logger.warning(f"⚠️ Could not load face detection model: {e}")
-            return None
+        """Legacy method - MediaPipe initialization is now done in __init__"""
+        # MediaPipe is initialized in __init__, this method kept for compatibility
+        logger.info("✅ MediaPipe Face Detection initialized (no model files needed)")
+        return True
     
     def detect_faces(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """
-        Detect faces in frame using OpenCV DNN
+        Detect faces in frame using MediaPipe
         Returns list of face bounding boxes (x, y, x1, y1)
         """
-        if self.face_net is None:
-            return []
-        
         try:
             h, w = frame.shape[:2]
-            blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
-            )
-            self.face_net.setInput(blob)
-            detections = self.face_net.forward()
+            
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Process frame with MediaPipe
+            results = self.face_detector.process(rgb_frame)
             
             faces = []
-            for i in range(detections.shape[2]):
-                confidence = detections[0, 0, i, 2]
-                if confidence > 0.5:  # Confidence threshold
-                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                    x, y, x1, y1 = box.astype("int")
-                    faces.append((x, y, x1, y1))
+            if results.detections:
+                for detection in results.detections:
+                    # Get relative bounding box from MediaPipe
+                    bbox = detection.location_data.relative_bounding_box
+                    
+                    # Convert relative coordinates to absolute pixel coordinates
+                    x = int(bbox.xmin * w)
+                    y = int(bbox.ymin * h)
+                    x1 = int((bbox.xmin + bbox.width) * w)
+                    y1 = int((bbox.ymin + bbox.height) * h)
+                    
+                    # Ensure coordinates are within frame bounds
+                    x = max(0, min(w, x))
+                    y = max(0, min(h, y))
+                    x1 = max(0, min(w, x1))
+                    y1 = max(0, min(h, y1))
+                    
+                    # Ensure valid bounding box (x1 > x and y1 > y)
+                    if x1 > x and y1 > y:
+                        faces.append((x, y, x1, y1))
             
             return faces
         except Exception as e:
-            logger.error(f"Face detection error: {e}")
+            logger.error(f"MediaPipe face detection error: {e}")
             return []
     
     def detect_voice_activity(self, audio_frame: bytes) -> bool:

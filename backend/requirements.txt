@@ -10,6 +10,7 @@ h11==0.16.0
 idna==3.10
 moviepy==2.2.1
 opencv-python==4.11.0.86
+mediapipe==0.10.21
 pydantic==2.11.7
 pydantic_core==2.33.2
 pydub==0.25.1

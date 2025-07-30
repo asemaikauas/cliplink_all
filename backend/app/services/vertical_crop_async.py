@@ -22,6 +22,7 @@ from datetime import datetime
 import threading
 import json
 import tempfile
+import mediapipe as mp
 
 # Smart Scene detection imports for intelligent crop reset
 try:
@@ -63,27 +64,20 @@ class AsyncVerticalCropService:
             logger.warning(f"⚠️ Could not initialize VAD: {e}")
             self.vad = None
         
-        # Try to load OpenCV DNN model for face detection
-        self.face_net = self._load_face_detection_model()
+        # Initialize MediaPipe Face Detection
+        self.mp_face_detection = mp.solutions.face_detection
+        self.face_detector = self.mp_face_detection.FaceDetection(
+            model_selection=1,  # 1 for videos (better range), 0 for close-up
+            min_detection_confidence=0.3  # Lower threshold for better detection
+        )
         
         logger.info(f"🚀 AsyncVerticalCropService initialized with {max_workers} workers, max {max_concurrent_tasks} concurrent tasks")
     
     def _load_face_detection_model(self):
-        """Load OpenCV DNN model for face detection (thread-safe)"""
-        try:
-            prototxt_path = "models/deploy.prototxt"
-            model_path = "models/res10_300x300_ssd_iter_140000_fp16.caffemodel"
-            
-            if Path(prototxt_path).exists() and Path(model_path).exists():
-                net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
-                logger.info("✅ Face detection model loaded")
-                return net
-            else:
-                logger.warning("⚠️ Face detection models not found. Using center-crop fallback.")
-                return None
-        except Exception as e:
-            logger.warning(f"⚠️ Could not load face detection model: {e}")
-            return None
+        """Legacy method - MediaPipe initialization is now done in __init__"""
+        # MediaPipe is initialized in __init__, this method kept for compatibility
+        logger.info("✅ MediaPipe Face Detection initialized (no model files needed)")
+        return True
     
     async def _run_cpu_bound_task(self, func, *args, **kwargs):
         """Run CPU-bound task in thread executor"""
@@ -140,29 +134,27 @@ class AsyncVerticalCropService:
             logger.info(f"🧹 Cleaned up {len(tasks_to_remove)} old tasks")
     
     def _detect_faces_sync(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
-        """Synchronous face detection for thread executor"""
-        if self.face_net is None:
-            return []
-        
+        """Synchronous MediaPipe face detection for thread executor"""
         try:
             h, w = frame.shape[:2]
-            blob = cv2.dnn.blobFromImage(
-                cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
-            )
-            self.face_net.setInput(blob)
-            detections = self.face_net.forward()
+            
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Process frame with MediaPipe
+            results = self.face_detector.process(rgb_frame)
             
             faces = []
-            for i in range(detections.shape[2]):
-                confidence = detections[0, 0, i, 2]
-                if confidence > 0.5:
-                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            if results.detections:
+                for detection in results.detections:
+                    # Get relative bounding box from MediaPipe
+                    bbox = detection.location_data.relative_bounding_box
                     
-                    # Check for invalid values before casting
-                    if np.any(np.isnan(box)) or np.any(np.isinf(box)):
-                        continue
-                    
-                    x, y, x1, y1 = box.astype("int")
+                    # Convert relative coordinates to absolute pixel coordinates
+                    x = int(bbox.xmin * w)
+                    y = int(bbox.ymin * h)
+                    x1 = int((bbox.xmin + bbox.width) * w)
+                    y1 = int((bbox.ymin + bbox.height) * h)
                     
                     # Ensure coordinates are within frame bounds
                     x = max(0, min(w, x))
@@ -176,7 +168,7 @@ class AsyncVerticalCropService:
             
             return faces
         except Exception as e:
-            logger.error(f"Face detection error: {e}")
+            logger.error(f"MediaPipe face detection error: {e}")
             return []
     
     async def detect_faces(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
