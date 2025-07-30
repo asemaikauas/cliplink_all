@@ -40,7 +40,7 @@ class VerticalCropService:
         self.mp_face_detection = mp.solutions.face_detection
         self.face_detector = self.mp_face_detection.FaceDetection(
             model_selection=1,  # 1 for videos (better range), 0 for close-up
-            min_detection_confidence=0.3  # Lower threshold for better detection
+            min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces and reduce empty places
         )
         
         # 🎯 ДОБАВЛЯЕМ СТАБИЛИЗАЦИЮ
@@ -219,7 +219,7 @@ class VerticalCropService:
         frame: np.ndarray, 
         speaker_box: Optional[Tuple[int, int, int, int]] = None,
         target_size: Tuple[int, int] = (608, 1080),
-        padding_factor: float = 1.8,
+        padding_factor: float = 2.0,
         use_smoothing: bool = True
     ) -> np.ndarray:
         """

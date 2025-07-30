@@ -64,11 +64,11 @@ class AsyncVerticalCropService:
             logger.warning(f"⚠️ Could not initialize VAD: {e}")
             self.vad = None
         
-        # Initialize MediaPipe Face Detection
+        # Initialize MediaPipe Face Detection with more sensitive settings
         self.mp_face_detection = mp.solutions.face_detection
         self.face_detector = self.mp_face_detection.FaceDetection(
             model_selection=1,  # 1 for videos (better range), 0 for close-up
-            min_detection_confidence=0.3  # Lower threshold for better detection
+            min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces and reduce empty places
         )
         
         logger.info(f"🚀 AsyncVerticalCropService initialized with {max_workers} workers, max {max_concurrent_tasks} concurrent tasks")
@@ -328,7 +328,7 @@ class AsyncVerticalCropService:
         speaker_box: Optional[Tuple[int, int, int, int]],
         target_size: Tuple[int, int],
         crop_center: Optional[Tuple[int, int]] = None,
-        padding_factor: float = 1.8
+        padding_factor: float = 2.0
     ) -> np.ndarray:
         """Synchronous frame cropping for thread executor"""
         h, w = frame.shape[:2]
@@ -348,8 +348,8 @@ class AsyncVerticalCropService:
             crop_center_y = max(face_center_y - padding_y, face_center_y)
         else:
             # 🔧 FALLBACK: Use right side instead of center when no speaker or crop center specified
-            crop_center_x = int(w * 0.75)  # 75% to the right
-            crop_center_y = h // 2
+            crop_center_x = int(w * 0.55)  # 55% from left (FIXED: was 75%, reduces empty places)
+            crop_center_y = int(h * 0.45)  # 45% from top (IMPROVED: was h//2, focuses on upper portion)
         
         # Calculate crop dimensions
         if w / h > target_aspect:
@@ -393,7 +393,7 @@ class AsyncVerticalCropService:
         speaker_box: Optional[Tuple[int, int, int, int]],
         target_size: Tuple[int, int],
         crop_center: Optional[Tuple[int, int]] = None,
-        padding_factor: float = 1.5
+        padding_factor: float = 2.0
     ) -> np.ndarray:
         """Async frame cropping"""
         return await self._run_cpu_bound_task(
@@ -945,8 +945,8 @@ class AsyncVerticalCropService:
                     )
                     h, w = frame.shape[:2]
                     if previous_crop_center is None:
-                        previous_crop_center = (int(w * 0.75), h // 2)
-                        recent_centers = [(int(w * 0.75), h // 2)]
+                        previous_crop_center = (int(w * 0.55), int(h * 0.45))  # FIXED: was 75% right, now 55% center
+                        recent_centers = [(int(w * 0.55), int(h * 0.45))]  # FIXED: consistent with fallback
                 else:
                     speaker_box = speaker_result if isinstance(speaker_result, tuple) else None
                     if speaker_box:
@@ -954,7 +954,11 @@ class AsyncVerticalCropService:
                         raw_center = ((x + x1) // 2, (y + y1) // 2)
                     else:
                         h, w = frame.shape[:2]
-                        raw_center = (int(w * 0.75), h // 2)
+                        # 🔧 IMPROVED FALLBACK: Smart center crop when no face detected
+                        # Instead of 75% right (which shows empty space), use better positioning  
+                        crop_center_x = int(w * 0.55)  # 55% from left (FIXED: was 75%, avoids empty spaces)
+                        crop_center_y = int(h * 0.45)  # 45% from top (focus on upper portion)
+                        raw_center = (crop_center_x, crop_center_y)
                     if should_reset:
                         crop_center = raw_center
                         recent_centers = [raw_center]
@@ -1333,7 +1337,7 @@ class AsyncVerticalCropService:
         speaker_1_box: Tuple[int, int, int, int],
         speaker_2_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.6
+        padding_factor: float = 1.8
     ) -> np.ndarray:
         """
         Create a split-screen vertical frame with two speakers
@@ -1367,7 +1371,7 @@ class AsyncVerticalCropService:
         frame: np.ndarray,
         speaker_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.6
+        padding_factor: float = 1.8
     ) -> np.ndarray:
         """
         Crop a single speaker region with smart framing
@@ -1429,7 +1433,7 @@ class AsyncVerticalCropService:
         speaker_1_box: Tuple[int, int, int, int],
         speaker_2_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.6
+        padding_factor: float = 1.8
     ) -> np.ndarray:
         """Async dual-speaker frame creation"""
         return await self._run_cpu_bound_task(
