@@ -465,8 +465,7 @@ class VerticalCropService:
                     '-map', '0:v:0',
                     '-map', '1:a:0',
                     '-shortest',
-                    str(output_video_path),
-                    '-y'
+                    '-y', str(output_video_path)  # FIXED: -y flag before output path
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 if result.returncode == 0:

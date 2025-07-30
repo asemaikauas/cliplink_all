@@ -252,7 +252,7 @@ class EnhancedVideoProcessingWorkflow:
                 '-avoid_negative_ts', 'make_zero',
                 '-fflags', '+genpts',
                 '-movflags', '+faststart',
-                str(output_path), '-y'
+                '-y', str(output_path)  # FIXED: -y flag before output path
             ]
             
             process = await asyncio.create_subprocess_exec(

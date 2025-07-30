@@ -996,8 +996,7 @@ class AsyncVerticalCropService:
                     '-map', '0:v:0',
                     '-map', '1:a:0',
                     '-shortest',
-                    str(output_video_path),
-                    '-y'
+                    '-y', str(output_video_path)  # FIXED: -y flag before output path
                 ]
                 import subprocess
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -1072,7 +1071,7 @@ class AsyncVerticalCropService:
                 '-fflags', '+genpts',  # Generate presentation timestamps
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',
-                str(output_video_path), '-y'
+                '-y', str(output_video_path)  # FIXED: -y flag before output path
             ]
             
             # Run ffmpeg asynchronously
