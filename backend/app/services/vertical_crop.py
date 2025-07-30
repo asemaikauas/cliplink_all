@@ -219,7 +219,7 @@ class VerticalCropService:
         frame: np.ndarray, 
         speaker_box: Optional[Tuple[int, int, int, int]] = None,
         target_size: Tuple[int, int] = (608, 1080),
-        padding_factor: float = 1.5,
+        padding_factor: float = 1.8,
         use_smoothing: bool = True
     ) -> np.ndarray:
         """

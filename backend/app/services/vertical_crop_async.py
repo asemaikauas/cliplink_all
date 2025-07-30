@@ -328,7 +328,7 @@ class AsyncVerticalCropService:
         speaker_box: Optional[Tuple[int, int, int, int]],
         target_size: Tuple[int, int],
         crop_center: Optional[Tuple[int, int]] = None,
-        padding_factor: float = 1.5
+        padding_factor: float = 1.8
     ) -> np.ndarray:
         """Synchronous frame cropping for thread executor"""
         h, w = frame.shape[:2]
@@ -1333,7 +1333,7 @@ class AsyncVerticalCropService:
         speaker_1_box: Tuple[int, int, int, int],
         speaker_2_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.3
+        padding_factor: float = 1.6
     ) -> np.ndarray:
         """
         Create a split-screen vertical frame with two speakers
@@ -1367,7 +1367,7 @@ class AsyncVerticalCropService:
         frame: np.ndarray,
         speaker_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.3
+        padding_factor: float = 1.6
     ) -> np.ndarray:
         """
         Crop a single speaker region with smart framing
@@ -1429,7 +1429,7 @@ class AsyncVerticalCropService:
         speaker_1_box: Tuple[int, int, int, int],
         speaker_2_box: Tuple[int, int, int, int],
         target_size: Tuple[int, int],
-        padding_factor: float = 1.3
+        padding_factor: float = 1.6
     ) -> np.ndarray:
         """Async dual-speaker frame creation"""
         return await self._run_cpu_bound_task(
