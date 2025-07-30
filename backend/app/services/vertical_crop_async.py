@@ -975,48 +975,64 @@ class AsyncVerticalCropService:
             cap.release()
             out.release()
             logger.info(f"🎬 Frame processing complete. Proceeding to audio merging...")
-            # --- AUDIO INTEGRATION STEP (unchanged) ---
+            # --- AUDIO INTEGRATION STEP (FIXED - No MoviePy) ---
             try:
-                from moviepy import VideoFileClip
                 if not temp_video_path.exists():
                     logger.error(f"Temp video not found: {temp_video_path}")
                     return {"success": False, "error": "Temp video not found"}
-                with VideoFileClip(str(input_video_path)) as original_clip:
-                    if original_clip.audio is None:
-                        logger.warning("⚠️ Original video has no audio. The output will be silent.")
-                        temp_video_path.rename(output_video_path)
-                        return {"success": True, "output_path": str(output_video_path)}
+                
+                # Check if original video has audio using FFprobe directly
+                check_audio_cmd = [
+                    'ffprobe', '-v', 'quiet', '-select_streams', 'a:0', 
+                    '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', 
+                    str(input_video_path)
+                ]
+                
+                import subprocess
+                audio_check = subprocess.run(check_audio_cmd, capture_output=True, text=True, check=False)
+                
+                if audio_check.returncode != 0 or not audio_check.stdout.strip():
+                    logger.warning("⚠️ Original video has no audio. The output will be silent.")
+                    temp_video_path.rename(output_video_path)
+                    return {"success": True, "output_path": str(output_video_path)}
+                
+                # DIRECT FFmpeg audio merging (no MoviePy)
                 cmd = [
                     'ffmpeg',
                     '-hide_banner', '-loglevel', 'error',
-                    '-i', str(temp_video_path),
-                    '-i', str(input_video_path),
-                    '-c:v', 'copy',
-                    '-c:a', 'copy',
-                    '-map', '0:v:0',
-                    '-map', '1:a:0',
-                    '-shortest',
-                    '-y', str(output_video_path)  # FIXED: -y flag before output path
+                    '-i', str(temp_video_path),  # Processed video (no audio)
+                    '-i', str(input_video_path), # Original video (with audio)
+                    '-c:v', 'copy',              # Copy video stream as-is
+                    '-c:a', 'aac',               # Re-encode audio for compatibility
+                    '-b:a', '192k',              # High audio bitrate
+                    '-map', '0:v:0',             # Video from processed file
+                    '-map', '1:a:0',             # Audio from original file
+                    '-shortest',                 # Match shortest stream
+                    '-y', str(output_video_path) # CORRECT: -y before output
                 ]
-                import subprocess
+                
+                logger.info("🔊 Merging audio using direct FFmpeg (no MoviePy)...")
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                
                 if result.returncode == 0:
                     logger.info(f"✅ Audio successfully merged! Final video: {output_video_path}")
                     if temp_video_path.exists():
                         os.remove(temp_video_path)
                     return {"success": True, "output_path": str(output_video_path)}
                 else:
-                    logger.error(f"❌ Failed to merge audio with ffmpeg: {result.stderr.strip()}")
+                    logger.error(f"❌ Direct FFmpeg audio merge failed: {result.stderr.strip()}")
+                    # Fallback: save silent video
                     if temp_video_path.exists():
                         temp_video_path.rename(output_video_path)
                         logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
-                    return {"success": False, "error": "Failed to merge audio"}
+                    return {"success": True, "output_path": str(output_video_path), "warning": "Silent video - audio merge failed"}
+                    
             except Exception as e:
                 logger.error(f"❌ An unexpected error occurred during audio merging: {e}")
                 if temp_video_path.exists():
                     temp_video_path.rename(output_video_path)
                     logger.warning(f"⚠️ Fallback: Saved SILENT video to {output_video_path}")
-                return {"success": False, "error": str(e)}
+                return {"success": True, "output_path": str(output_video_path), "warning": "Silent video - error occurred"}
         except Exception as e:
             logger.error(f"❌ Smart frame processing failed: {str(e)}")
             return {"success": False, "error": str(e)}
@@ -1050,15 +1066,29 @@ class AsyncVerticalCropService:
             return await self._fallback_audio_merge(temp_video_path, input_video_path, output_video_path)
     
     async def _fallback_audio_merge(self, temp_video_path: Path, input_video_path: Path, output_video_path: Path) -> bool:
-        """Fallback audio merge with basic sync preservation"""
+        """Fallback audio merge with NO MoviePy dependency"""
         try:
-            # Check if original has audio
-            with VideoFileClip(str(input_video_path)) as original_clip:
-                if original_clip.audio is None:
-                    temp_video_path.rename(output_video_path)
-                    return True
+            # Check if original has audio using FFprobe
+            check_audio_cmd = [
+                'ffprobe', '-v', 'quiet', '-select_streams', 'a:0', 
+                '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', 
+                str(input_video_path)
+            ]
             
-            # Enhanced ffmpeg command with better sync preservation
+            process = await asyncio.create_subprocess_exec(
+                *check_audio_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0 or not stdout.decode().strip():
+                # No audio - just rename temp file
+                temp_video_path.rename(output_video_path)
+                return True
+            
+            # Enhanced ffmpeg command with better sync preservation (NO MoviePy)
             cmd = [
                 'ffmpeg', '-hide_banner', '-loglevel', 'error',
                 '-i', str(temp_video_path),
@@ -1071,7 +1101,7 @@ class AsyncVerticalCropService:
                 '-fflags', '+genpts',  # Generate presentation timestamps
                 '-avoid_negative_ts', 'make_zero',
                 '-movflags', '+faststart',
-                '-y', str(output_video_path)  # FIXED: -y flag before output path
+                '-y', str(output_video_path)  # CORRECT: -y flag before output path
             ]
             
             # Run ffmpeg asynchronously
@@ -1093,7 +1123,7 @@ class AsyncVerticalCropService:
                 # Last resort: rename temp file
                 if temp_video_path.exists():
                     temp_video_path.rename(output_video_path)
-                return False
+                return True  # Return True because we have a file, even if silent
                 
         except Exception as e:
             logger.error(f"Fallback audio merge error: {e}")

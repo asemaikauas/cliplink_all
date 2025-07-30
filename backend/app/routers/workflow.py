@@ -602,21 +602,28 @@ async def _process_video_workflow_async(
                 crop_success = crop_result.get("success", False)
                 if not crop_success:
                     print(f"   ⚠️ Face detection cropping failed: {crop_result.get('error', 'Unknown error')}")
-                    # NEW: Try ultra-quality FFmpeg processor as fallback
-                    print(f"   🚀 Trying ultra-quality FFmpeg processor for problematic video...")
-                    try:
-                        ultra_result = await ffmpeg_processor.process_video_to_vertical_ultra_quality(
-                            horizontal_clip_path,
-                            vertical_clip_path,
-                            target_size=(608, 1080),
-                            quality_preset="fast",  # Use fast for fallback
-                            use_face_detection=True
-                        )
-                        crop_success = ultra_result.get('success', False)
-                        if crop_success:
-                            print(f"   ✅ Ultra-quality processor succeeded!")
-                    except Exception as e:
-                        print(f"   ⚠️ Ultra-quality processor also failed: {e}")
+                    # FAST FALLBACK: Try simple FFmpeg center cropping first 
+                    print(f"   ⚡ Trying fast FFmpeg center cropping...")
+                    crop_success = await _ffmpeg_vertical_crop(horizontal_clip_path, vertical_clip_path)
+                    
+                    if crop_success:
+                        print(f"   ✅ Fast FFmpeg cropping succeeded!")
+                    else:
+                        # SLOW FALLBACK: Only use ultra-quality processor as last resort
+                        print(f"   🚀 Trying ultra-quality FFmpeg processor for problematic video...")
+                        try:
+                            ultra_result = await ffmpeg_processor.process_video_to_vertical_ultra_quality(
+                                horizontal_clip_path,
+                                vertical_clip_path,
+                                target_size=(608, 1080),
+                                quality_preset="fast",  # Use fast for fallback
+                                use_face_detection=True
+                            )
+                            crop_success = ultra_result.get('success', False)
+                            if crop_success:
+                                print(f"   ✅ Ultra-quality processor succeeded!")
+                        except Exception as e:
+                            print(f"   ⚠️ Ultra-quality processor also failed: {e}")
             else:
                 # Use simple FFmpeg center cropping (default behavior)
                 print(f"   📐 Using center cropping...")
