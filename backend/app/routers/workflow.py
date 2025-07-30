@@ -652,180 +652,185 @@ async def _process_video_workflow_async(
             else:
                 print(f"❌ Failed to create vertical clip {i+1}")
                 
-                # Clean up horizontal clip
-                if horizontal_clip_path.exists():
-                    horizontal_clip_path.unlink()
+            # Clean up horizontal clip after processing
+            if horizontal_clip_path.exists():
+                horizontal_clip_path.unlink()
+        
+        # Update progress after processing all segments
+        _update_workflow_progress(task_id, "vertical_crop", 70, f"✅ Created {len(vertical_clips)} vertical clips")
+        
+        # Delete full video AFTER processing all segments
+        if video_path.exists():
+            video_path.unlink()
+            print(f"🧹 Deleted full video: {video_path}")
+        
+        # STEP 5: Burn Subtitles (Mandatory)
+        _update_workflow_progress(task_id, "subtitles", 75, "Burning subtitles into clips...")
+        from app.services.burn_in import burn_subtitles_to_video
+        from app.services.subs import convert_groq_to_subtitles
+        
+        final_clips = []
+        for i, (vertical_clip, segment) in enumerate(zip(vertical_clips, viral_segments)):
+            safe_title = youtube_service._sanitize_filename(segment.get("title", f"segment_{i+1}"))
+            subtitled_path = vertical_clip.parent / f"{safe_title}_final_{i+1}.mp4"
             
-            _update_workflow_progress(task_id, "vertical_crop", 70, f"✅ Created {len(vertical_clips)} vertical clips")
+            print(f"🔤 Adding subtitles to clip {i+1}/{len(vertical_clips)}")
             
-            # Delete full video after vertical cropping
-            if video_path.exists():
-                video_path.unlink()
-                print(f"🧹 Deleted full video: {video_path}")
-            
-            # STEP 5: Burn Subtitles (Mandatory)
-            _update_workflow_progress(task_id, "subtitles", 75, "Burning subtitles into clips...")
-            from app.services.burn_in import burn_subtitles_to_video
-            from app.services.subs import convert_groq_to_subtitles
-            
-            final_clips = []
-            for i, (vertical_clip, segment) in enumerate(zip(vertical_clips, viral_segments)):
-                safe_title = youtube_service._sanitize_filename(segment.get("title", f"segment_{i+1}"))
-                subtitled_path = vertical_clip.parent / f"{safe_title}_final_{i+1}.mp4"
+            # Generate subtitles
+            subtitle_data = await _run_blocking_task(transcribe, str(vertical_clip))
+            if subtitle_data and subtitle_data.get("segments"):
+                # Use the vertical clip's directory and filename for subtitle output
+                output_dir = str(vertical_clip.parent)
+                filename_base = f"{safe_title}_subtitles_{i+1}"
                 
-                print(f"🔤 Adding subtitles to clip {i+1}/{len(vertical_clips)}")
-                
-                # Generate subtitles
-                subtitle_data = await _run_blocking_task(transcribe, str(vertical_clip))
-                if subtitle_data and subtitle_data.get("segments"):
-                    # Use the vertical clip's directory and filename for subtitle output
-                    output_dir = str(vertical_clip.parent)
-                    filename_base = f"{safe_title}_subtitles_{i+1}"
-                    
-                    srt_path, vtt_path = convert_groq_to_subtitles(
-                        groq_segments=subtitle_data["segments"],
-                        output_dir=output_dir,
-                        filename_base=filename_base,
-                        speech_sync_mode=True,  # Enable speech synchronization
-                        word_timestamps=subtitle_data.get("word_timestamps", [])  # Use word timing data
-                    )
-                    
-                    # Burn subtitles using the SRT file path
-                    burn_result = await _run_blocking_task(
-                        burn_subtitles_to_video,
-                        video_path=str(vertical_clip),
-                        srt_path=srt_path,  # Use the generated SRT file path
-                        output_path=str(subtitled_path),
-                        font_size=font_size,
-                        export_codec=export_codec
-                    )
-                    
-                    if burn_result and subtitled_path.exists():
-                        final_clips.append(subtitled_path)
-                        print(f"✅ Subtitles added to clip {i+1}")
-                        
-                        # Clean up vertical clip without subtitles
-                        if vertical_clip.exists():
-                            vertical_clip.unlink()
-                    else:
-                        print(f"❌ Failed to add subtitles to clip {i+1}")
-                        # Keep the vertical clip if subtitle burning failed
-                        final_clips.append(vertical_clip)
-            
-            _update_workflow_progress(task_id, "subtitles", 85, f"✅ Added subtitles to {len(final_clips)} clips")
-            
-            # STEP 6: Upload to Azure
-            _update_workflow_progress(task_id, "upload", 90, "Uploading final clips to Azure...")
-            from app.services.clip_storage import get_clip_storage_service
-            clip_storage = await get_clip_storage_service()
-            
-            azure_urls = []
-            azure_clips_info = []  # Add detailed clip info including thumbnails
-            for i, final_clip in enumerate(final_clips):
-                safe_title = youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}"))
-                
-                # Generate thumbnail before uploading
-                print(f"   📸 Generating thumbnail for clip {i+1}...")
-                azure_thumbnail_url = None
-                try:
-                    from app.services.thumbnail import generate_thumbnail
-                    thumbnails_dir = final_clip.parent / "thumbnails"
-                    thumbnails_dir.mkdir(exist_ok=True)
-                    clip_id = f"clip_{i+1}_{safe_title}"
-                    
-                    thumbnail_result = await generate_thumbnail(
-                        video_path=final_clip,
-                        output_dir=thumbnails_dir,
-                        clip_id=clip_id,
-                        width=300,
-                        timestamp=1.0
-                    )
-                    
-                    if thumbnail_result.get("success"):
-                        thumbnail_filename = thumbnail_result.get("thumbnail_filename")
-                        thumbnail_path = thumbnails_dir / thumbnail_filename
-                        
-                        # Upload thumbnail to Azure
-                        thumbnail_blob_name = f"thumbnails/{safe_title}_{i+1}_{int(time.time())}.jpg"
-                        azure_thumbnail_url = await clip_storage.azure_storage.upload_file(
-                            file_path=str(thumbnail_path),
-                            blob_name=thumbnail_blob_name,
-                            container_type="thumbnails",
-                            metadata={
-                                "clip_index": str(i),
-                                "title": safe_title,
-                                "created_at": datetime.utcnow().isoformat()
-                            }
-                        )
-                        print(f"   ✅ Thumbnail uploaded to Azure: {azure_thumbnail_url}")
-                        
-                        # Clean up local thumbnail
-                        if thumbnail_path.exists():
-                            thumbnail_path.unlink()
-                    else:
-                        print(f"   ⚠️ Thumbnail generation failed for clip {i+1}")
-                        
-                except Exception as e:
-                    print(f"   ⚠️ Thumbnail processing failed for clip {i+1}: {str(e)}")
-                
-                # Upload clip to Azure
-                blob_name = f"clips/{safe_title}_{int(time.time())}_{i+1}.mp4"
-                
-                azure_url = await clip_storage.azure_storage.upload_file(
-                    file_path=str(final_clip),
-                    blob_name=blob_name,
-                    container_type="clips",
-                    metadata={
-                        "segment_index": str(i),
-                        "title": youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}")),
-                        "start_time": str(viral_segments[i].get("start")),
-                        "end_time": str(viral_segments[i].get("end")),
-                        "has_subtitles": "true",
-                        "is_vertical": "true",
-                        "created_at": datetime.utcnow().isoformat()
-                    }
+                srt_path, vtt_path = convert_groq_to_subtitles(
+                    groq_segments=subtitle_data["segments"],
+                    output_dir=output_dir,
+                    filename_base=filename_base,
+                    speech_sync_mode=True,  # Enable speech synchronization
+                    word_timestamps=subtitle_data.get("word_timestamps", [])  # Use word timing data
                 )
-                azure_urls.append(azure_url)
                 
-                # Store detailed clip info including thumbnail URL
-                clip_info = {
-                    "azure_clip_url": azure_url,
-                    "azure_thumbnail_url": azure_thumbnail_url,
-                    "title": viral_segments[i].get("title", f"Clip {i+1}"),
-                    "start_time": viral_segments[i].get("start", 0.0),
-                    "end_time": viral_segments[i].get("end", 60.0),
-                    "duration": viral_segments[i].get("end", 60.0) - viral_segments[i].get("start", 0.0),
-                    "segment_index": i,
-                    "has_thumbnails": azure_thumbnail_url is not None
-                }
-                azure_clips_info.append(clip_info)
+                # Burn subtitles using the SRT file path
+                burn_result = await _run_blocking_task(
+                    burn_subtitles_to_video,
+                    video_path=str(vertical_clip),
+                    srt_path=srt_path,  # Use the generated SRT file path
+                    output_path=str(subtitled_path),
+                    font_size=font_size,
+                    export_codec=export_codec
+                )
                 
-                print(f"☁️ Uploaded clip {i+1} to Azure")
-                
-                # Clean up local final clip after upload
-                if final_clip.exists():
-                    final_clip.unlink()
+                if burn_result and subtitled_path.exists():
+                    final_clips.append(subtitled_path)
+                    print(f"✅ Subtitles added to clip {i+1}")
+                    
+                    # Clean up vertical clip without subtitles
+                    if vertical_clip.exists():
+                        vertical_clip.unlink()
+                else:
+                    print(f"❌ Failed to add subtitles to clip {i+1}")
+                    # Keep the vertical clip if subtitle burning failed
+                    final_clips.append(vertical_clip)
+            else:
+                print(f"⚠️ No transcription data available for clip {i+1}, keeping vertical clip")
+                # Keep the vertical clip if no transcription available
+                final_clips.append(vertical_clip)
+        
+        _update_workflow_progress(task_id, "subtitles", 85, f"✅ Added subtitles to {len(final_clips)} clips")
+        
+        # STEP 6: Upload to Azure
+        _update_workflow_progress(task_id, "upload", 90, "Uploading final clips to Azure...")
+        from app.services.clip_storage import get_clip_storage_service
+        clip_storage = await get_clip_storage_service()
+        
+        azure_urls = []
+        azure_clips_info = []  # Add detailed clip info including thumbnails
+        for i, final_clip in enumerate(final_clips):
+            safe_title = youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}"))
             
-            _update_workflow_progress(task_id, "upload", 100, f"✅ Clips are getting ready")
+            # Generate thumbnail before uploading
+            print(f"   📸 Generating thumbnail for clip {i+1}...")
+            azure_thumbnail_url = None
+            try:
+                from app.services.thumbnail import generate_thumbnail
+                thumbnails_dir = final_clip.parent / "thumbnails"
+                thumbnails_dir.mkdir(exist_ok=True)
+                clip_id = f"clip_{i+1}_{safe_title}"
+                
+                thumbnail_result = await generate_thumbnail(
+                    video_path=final_clip,
+                    output_dir=thumbnails_dir,
+                    clip_id=clip_id,
+                    width=300,
+                    timestamp=1.0
+                )
+                
+                if thumbnail_result.get("success"):
+                    thumbnail_filename = thumbnail_result.get("thumbnail_filename")
+                    thumbnail_path = thumbnails_dir / thumbnail_filename
+                    
+                    # Upload thumbnail to Azure
+                    thumbnail_blob_name = f"thumbnails/{safe_title}_{i+1}_{int(time.time())}.jpg"
+                    azure_thumbnail_url = await clip_storage.azure_storage.upload_file(
+                        file_path=str(thumbnail_path),
+                        blob_name=thumbnail_blob_name,
+                        container_type="thumbnails",
+                        metadata={
+                            "clip_index": str(i),
+                            "title": safe_title,
+                            "created_at": datetime.utcnow().isoformat()
+                        }
+                    )
+                    print(f"   ✅ Thumbnail uploaded to Azure: {azure_thumbnail_url}")
+                    
+                    # Clean up local thumbnail
+                    if thumbnail_path.exists():
+                        thumbnail_path.unlink()
+                else:
+                    print(f"   ⚠️ Thumbnail generation failed for clip {i+1}")
+                    
+            except Exception as e:
+                print(f"   ⚠️ Thumbnail processing failed for clip {i+1}: {str(e)}")
             
-            # Return success result
-            return {
-                "success": True,
-                "workflow_type": "comprehensive",
-                "clips_created": len(azure_urls),
-                "azure_urls": azure_urls,
-                "azure_clips_info": azure_clips_info,  # Add detailed clip info
-                "video_info": {
-                    "id": video_info['id'],
-                    "title": video_info['title'],
-                    "duration": video_info['duration']
-                },
-                "segments_info": {
-                    "total_segments": len(viral_segments),
-                    "processed_segments": len(azure_urls)
+            # Upload clip to Azure
+            blob_name = f"clips/{safe_title}_{int(time.time())}_{i+1}.mp4"
+            
+            azure_url = await clip_storage.azure_storage.upload_file(
+                file_path=str(final_clip),
+                blob_name=blob_name,
+                container_type="clips",
+                metadata={
+                    "segment_index": str(i),
+                    "title": youtube_service._sanitize_filename(viral_segments[i].get("title", f"segment_{i+1}")),
+                    "start_time": str(viral_segments[i].get("start")),
+                    "end_time": str(viral_segments[i].get("end")),
+                    "has_subtitles": "true",
+                    "is_vertical": "true",
+                    "created_at": datetime.utcnow().isoformat()
                 }
+            )
+            azure_urls.append(azure_url)
+            
+            # Store detailed clip info including thumbnail URL
+            clip_info = {
+                "azure_clip_url": azure_url,
+                "azure_thumbnail_url": azure_thumbnail_url,
+                "title": viral_segments[i].get("title", f"Clip {i+1}"),
+                "start_time": viral_segments[i].get("start", 0.0),
+                "end_time": viral_segments[i].get("end", 60.0),
+                "duration": viral_segments[i].get("end", 60.0) - viral_segments[i].get("start", 0.0),
+                "segment_index": i,
+                "has_thumbnails": azure_thumbnail_url is not None
             }
+            azure_clips_info.append(clip_info)
             
+            print(f"☁️ Uploaded clip {i+1} to Azure")
+            
+            # Clean up local final clip after upload
+            if final_clip.exists():
+                final_clip.unlink()
+        
+        _update_workflow_progress(task_id, "upload", 100, f"✅ Clips are getting ready")
+        
+        # Return success result
+        return {
+            "success": True,
+            "workflow_type": "comprehensive",
+            "clips_created": len(azure_urls),
+            "azure_urls": azure_urls,
+            "azure_clips_info": azure_clips_info,  # Add detailed clip info
+            "video_info": {
+                "id": video_info['id'],
+                "title": video_info['title'],
+                "duration": video_info['duration']
+            },
+            "segments_info": {
+                "total_segments": len(viral_segments),
+                "processed_segments": len(azure_urls)
+            }
+        }
+        
     except Exception as e:
         print(f"❌ Workflow failed: {str(e)}")
         raise e
