@@ -65,11 +65,18 @@ class AsyncVerticalCropService:
             self.vad = None
         
         # Initialize MediaPipe Face Detection with more sensitive settings
-        self.mp_face_detection = mp.solutions.face_detection
-        self.face_detector = self.mp_face_detection.FaceDetection(
-            model_selection=1,  # 1 for videos (better range), 0 for close-up
-            min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces and reduce empty places
-        )
+        try:
+            self.mp_face_detection = mp.solutions.face_detection
+            self.face_detector = self.mp_face_detection.FaceDetection(
+                model_selection=1,  # 1 for videos (better range), 0 for close-up
+                min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces and reduce empty places
+            )
+            self.mediapipe_available = True
+            logger.info("✅ MediaPipe Face Detection initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize MediaPipe Face Detection: {e}")
+            self.face_detector = None
+            self.mediapipe_available = False
         
         logger.info(f"🚀 AsyncVerticalCropService initialized with {max_workers} workers, max {max_concurrent_tasks} concurrent tasks")
     
@@ -136,10 +143,51 @@ class AsyncVerticalCropService:
     def _detect_faces_sync(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """Synchronous MediaPipe face detection for thread executor"""
         try:
+            # Check if MediaPipe is available
+            if not self.mediapipe_available or self.face_detector is None:
+                logger.debug("MediaPipe not available - skipping face detection")
+                return []
+            
+            # 🔍 FRAME VALIDATION: Check if frame is valid before processing
+            if frame is None:
+                logger.debug("Frame is None - skipping face detection")
+                return []
+            
+            if not isinstance(frame, np.ndarray):
+                logger.debug("Frame is not a numpy array - skipping face detection")
+                return []
+            
+            if frame.size == 0:
+                logger.debug("Frame is empty (size=0) - skipping face detection")
+                return []
+            
+            if len(frame.shape) < 2:
+                logger.debug(f"Frame has invalid shape {frame.shape} - skipping face detection")
+                return []
+            
             h, w = frame.shape[:2]
+            
+            # Validate frame dimensions
+            if h <= 0 or w <= 0:
+                logger.debug(f"Frame has invalid dimensions {w}x{h} - skipping face detection")
+                return []
+            
+            if len(frame.shape) < 3 or frame.shape[2] != 3:
+                logger.debug(f"Frame is not a valid color image (shape: {frame.shape}) - skipping face detection")
+                return []
+            
+            # Check for corrupted frame data
+            if not frame.any():
+                logger.debug("Frame contains only zeros - skipping face detection")
+                return []
             
             # Convert BGR to RGB for MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Final validation after color conversion
+            if rgb_frame is None or rgb_frame.size == 0:
+                logger.debug("RGB conversion failed - skipping face detection")
+                return []
             
             # Process frame with MediaPipe
             results = self.face_detector.process(rgb_frame)
@@ -167,6 +215,9 @@ class AsyncVerticalCropService:
                         faces.append((x, y, x1, y1))
             
             return faces
+        except cv2.error as e:
+            logger.error(f"OpenCV error in face detection: {e}")
+            return []
         except Exception as e:
             logger.error(f"MediaPipe face detection error: {e}")
             return []
@@ -899,6 +950,34 @@ class AsyncVerticalCropService:
                 ret, frame = cap.read()
                 if not ret:
                     break
+                
+                # 🔍 FRAME VALIDATION: Validate frame before processing
+                if frame is None:
+                    logger.warning(f"Frame {frame_count} is None - skipping")
+                    frame_count += 1
+                    continue
+                
+                if not isinstance(frame, np.ndarray):
+                    logger.warning(f"Frame {frame_count} is not a numpy array - skipping")
+                    frame_count += 1
+                    continue
+                
+                if frame.size == 0:
+                    logger.warning(f"Frame {frame_count} is empty (size=0) - skipping")
+                    frame_count += 1
+                    continue
+                
+                if len(frame.shape) < 3 or frame.shape[2] != 3:
+                    logger.warning(f"Frame {frame_count} has invalid shape {frame.shape} - skipping")
+                    frame_count += 1
+                    continue
+                
+                h, w = frame.shape[:2]
+                if h <= 0 or w <= 0:
+                    logger.warning(f"Frame {frame_count} has invalid dimensions {w}x{h} - skipping")
+                    frame_count += 1
+                    continue
+                
                 # SMART SCENE RESET LOGIC
                 should_reset = self._apply_smart_reset(
                     frame_count, scene_boundaries, scene_stats, 
