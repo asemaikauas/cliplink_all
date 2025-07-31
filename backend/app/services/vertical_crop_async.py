@@ -64,21 +64,51 @@ class AsyncVerticalCropService:
             logger.warning(f"⚠️ Could not initialize VAD: {e}")
             self.vad = None
         
-        # Initialize MediaPipe Face Detection with more sensitive settings
+        # Initialize MediaPipe Face Detection with thread-local instances
         try:
             self.mp_face_detection = mp.solutions.face_detection
-            self.face_detector = self.mp_face_detection.FaceDetection(
-                model_selection=1,  # 1 for videos (better range), 0 for close-up
-                min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces and reduce empty places
-            )
+            # Create thread-local storage for MediaPipe detectors
+            self._thread_local = threading.local()
             self.mediapipe_available = True
-            logger.info("✅ MediaPipe Face Detection initialized successfully")
+            logger.info("✅ MediaPipe Face Detection configured for thread-local instances")
         except Exception as e:
             logger.error(f"❌ Failed to initialize MediaPipe Face Detection: {e}")
-            self.face_detector = None
+            self.mp_face_detection = None
             self.mediapipe_available = False
         
         logger.info(f"🚀 AsyncVerticalCropService initialized with {max_workers} workers, max {max_concurrent_tasks} concurrent tasks")
+    
+    def _get_thread_local_face_detector(self):
+        """Get or create a thread-local MediaPipe face detector instance"""
+        if not self.mediapipe_available:
+            return None
+        
+        # Check if current thread already has a detector
+        if not hasattr(self._thread_local, 'face_detector'):
+            try:
+                                # Create a new detector instance for this thread
+                self._thread_local.face_detector = self.mp_face_detection.FaceDetection(
+                    model_selection=1,  # 1 for videos (better range), 0 for close-up
+                    min_detection_confidence=0.2  # LOWERED from 0.3 to catch more faces
+                )
+                thread_name = threading.current_thread().name
+                logger.info(f"✅ Created new MediaPipe detector for thread {thread_name} (eliminates timestamp conflicts)")
+            except Exception as e:
+                logger.error(f"❌ Failed to create thread-local MediaPipe detector: {e}")
+                self._thread_local.face_detector = None
+        
+        return self._thread_local.face_detector
+    
+    def cleanup_thread_local_detectors(self):
+        """Clean up thread-local MediaPipe detectors to prevent memory leaks"""
+        try:
+            if hasattr(self, '_thread_local') and hasattr(self._thread_local, 'face_detector'):
+                if self._thread_local.face_detector is not None:
+                    # MediaPipe detectors don't have explicit cleanup, but we can clear the reference
+                    self._thread_local.face_detector = None
+                    logger.debug(f"🧹 Cleaned up MediaPipe detector for thread {threading.current_thread().name}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error cleaning up thread-local detector: {e}")
     
     def _load_face_detection_model(self):
         """Legacy method - MediaPipe initialization is now done in __init__"""
@@ -143,9 +173,10 @@ class AsyncVerticalCropService:
     def _detect_faces_sync(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
         """Synchronous MediaPipe face detection for thread executor"""
         try:
-            # Check if MediaPipe is available
-            if not self.mediapipe_available or self.face_detector is None:
-                logger.debug("MediaPipe not available - skipping face detection")
+            # Get thread-local face detector
+            face_detector = self._get_thread_local_face_detector()
+            if face_detector is None:
+                logger.debug("No face detector available for this thread - skipping face detection")
                 return []
             
             # 🔍 FRAME VALIDATION: Check if frame is valid before processing
@@ -189,8 +220,8 @@ class AsyncVerticalCropService:
                 logger.debug("RGB conversion failed - skipping face detection")
                 return []
             
-            # Process frame with MediaPipe
-            results = self.face_detector.process(rgb_frame)
+            # Process frame with MediaPipe (using thread-local detector)
+            results = face_detector.process(rgb_frame)
             
             faces = []
             if results.detections:
